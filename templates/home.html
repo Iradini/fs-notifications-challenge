@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% block content %}
+  {% for notification in notifications %}
+    <article class="content-section py-3 px-4 mb-4">
+      <div class="d-flex align-items-start gap-4">
+        <img class="rounded-circle article-img flex-shrink-0"
+             src="{{ url_for('static', path='profile_pics/default.jpg') }}"
+             alt="{{ notification.sender }}'s profile picture"
+             width="64"
+             height="64"
+             loading="lazy">
+        <div class="flex-grow-1">
+          <div class="article-metadata mb-2">
+            <a class="me-2" href="#">{{ notification.sender }}</a>
+            <small class="text-body-secondary">{{ notification.created_at }}</small>
+          </div>
+          <h2>
+            <a class="article-title" href="#">{{ notification.title }}</a>
+          </h2>
+          <p class="article-content">{{ notification.message }}</p>
+        </div>
+      </div>
+    </article>
+  {% endfor %}
+{% endblock content %}

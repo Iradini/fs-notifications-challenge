@@ -1,0 +1,29 @@
+[project]
+name = "fs-notifications-challenge"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Iradini", email = "mariairadini@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.14.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "sqlalchemy[asyncio]>=2.0.54",
+    "uvicorn>=0.53.0",
+]
+
+[project.scripts]
+fs-notifications-challenge = "fs_notifications_challenge:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
