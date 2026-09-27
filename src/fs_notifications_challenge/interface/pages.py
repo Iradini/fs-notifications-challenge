@@ -13,7 +13,6 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False, name="home")
 @router.get("/notifications", response_class=HTMLResponse, include_in_schema=False, name="posts")
-@router.get("/api/notifications", response_class=HTMLResponse, include_in_schema=False, name="posts")
 async def home(
     request: Request,
     list_notifications: Annotated[ListNotifications, Depends(get_list_notifications)],

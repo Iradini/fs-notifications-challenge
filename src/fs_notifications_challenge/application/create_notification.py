@@ -1,12 +1,11 @@
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 
 from fs_notifications_challenge.application.ports import NotificationRepository
-from fs_notifications_challenge.domain.notification import Notification, Status
+from fs_notifications_challenge.domain.notification import Channel, Notification
 
 
 @dataclass
-class SendNotification:
+class CreateNotification:
     repository: NotificationRepository
 
     async def execute(
@@ -15,19 +14,15 @@ class SendNotification:
             user_id: int,
             title: str,
             content: str,
+            channel: Channel,
             recipient: str,
-            status: Status = Status.SENT,
-            sent_at: datetime = field(default_factory=lambda: datetime.now(UTC)),
-            last_error: str | None = None,
     ) -> Notification:
-        notification = Notification (
+        notification = Notification(
             id=id,
             user_id=user_id,
             title=title,
             content=content,
+            channel=channel,
             recipient=recipient,
-            status=status,
-            sent_at=sent_at,
-            last_error=last_error,
         )
         return await self.repository.add(notification)

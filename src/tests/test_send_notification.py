@@ -1,8 +1,8 @@
 import pytest
 
 from fs_notifications_challenge.application.ports import NotificationRepository
-from fs_notifications_challenge.application.send_notification import SendNotification
-from fs_notifications_challenge.domain.notification import DomainError, Notification
+from fs_notifications_challenge.application.create_notification import CreateNotification
+from fs_notifications_challenge.domain.notification import DomainError, Channel, Notification, Status
 
 
 class FakeNotificationRepository(NotificationRepository):
@@ -20,22 +20,26 @@ class FakeNotificationRepository(NotificationRepository):
         return await super().list_all()
 
 # @pytest.mark.anyio
-async def test_send_notification_persists_and_returns_it():
+async def test_create_notification_persists_and_returns_it():
     repo = FakeNotificationRepository()
-    use_case = SendNotification(repository=repo)
+    use_case = CreateNotification(repository=repo)
 
-    result = await use_case.execute(sender_id=1, recipient_id=2, title="Test", message="Hello")
+    result = await use_case.execute(
+        id=1, user_id=1, title="Test", content="Hello", channel=Channel.EMAIL, recipient="test_recipient",
+    )
 
     assert result.id == 1
     assert len(repo.saved) == 1
-    assert repo.saved[0].message == "Hello"
+    assert repo.saved[0].content == "Hello"
 
 # @pytest.mark.anyio
-async def test_cannot_notify_yourself():
+async def test_recipient_cannot_be_empty():
     repo = FakeNotificationRepository()
-    use_case = SendNotification(repository=repo)
+    use_case = CreateNotification(repository=repo)
 
     with pytest.raises(DomainError):
-        await use_case.execute(sender_id=1, recipient_id=1, title="Test Error", message="Hi")
+        await use_case.execute(
+            id=1, user_id=1, title="Test Error", content="Hi", channel=Channel.EMAIL, recipient="",
+        )
 
     assert repo.saved == []

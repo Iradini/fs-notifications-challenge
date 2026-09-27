@@ -2,22 +2,42 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import Enum
+
+
+class Channel(str, Enum):
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+    PUSH = "PUSH"
+
 
 class DomainError(Exception):
     """Raised when a business rule is violated"""
 
+
+class Status(str, Enum):
+    CREATED ="CREATED"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 @dataclass
 class Notification():
-    sender_id: int
-    recipient_id: int
+    user_id: int
     title: str
-    message: str
+    content: str
+    channel: Channel
+    recipient: str
     id: int | None = None
-    is_read: bool = False
+    status: Status = Status.CREATED
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    sent_at: datetime | None = None
+    last_error: str | None = None
 
     def __post_init__(self) -> None :
-        if self.sender_id == self.recipient_id:
-            raise DomainError("A user cannot notify themselves.")
-        if not self.message.strip():
-            raise DomainError("Notification message can't be blank.")
+        if not self.title.strip():
+            raise DomainError("Notification title cannot be blank.")
+        if not self.content.strip():
+            raise DomainError("Notification message cannot be blank.")
+        if not self.recipient.strip():
+            raise DomainError("Notification recipient cannot be blank.")

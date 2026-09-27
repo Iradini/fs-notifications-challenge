@@ -2,23 +2,22 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 # from sqlalchemy.ext.asyncio import AsyncSession
 # from sqlalchemy.orm import Session
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from fs_notifications_challenge.application.create_notification import CreateNotification
 from fs_notifications_challenge.application.list_notification import ListNotifications
 from fs_notifications_challenge.application.send_notification import SendNotification
-from fs_notifications_challenge.domain.notification import DomainError, Notification
+from fs_notifications_challenge.domain.notification import Notification
 from fs_notifications_challenge.infrastructure.database import get_db
 from fs_notifications_challenge.infrastructure.repository import SQLAlchemyNotificationRepository
 from fs_notifications_challenge.interface.dependencies import (
+    get_create_notification,
     get_list_notifications,
     get_send_notification,
 )
 from fs_notifications_challenge.interface.schemas import (
+    NotificationCreateRequest,
     NotificationResponse,
     SendNotificationRequest,
 )
@@ -33,6 +32,26 @@ async def get_notifications(
     return [NotificationResponse.model_validate(n) for n in notifications]
 
 
+@router.post(
+        "",
+        response_model=NotificationResponse,
+        status_code=status.HTTP_201_CREATED,
+)
+async def create_notification(
+    payload: NotificationCreateRequest,
+    use_case: Annotated[CreateNotification, Depends(get_create_notification)],
+) -> NotificationResponse:
+    notification = await use_case.execute(
+        id=payload.id,
+        user_id=payload.user_id,
+        title=payload.title,
+        content=payload.content,
+        channel=payload.channel,
+        recipient=payload.recipient,
+    )
+    return NotificationResponse.model_validate(notification)
+
+
 @router.get("/{notification_id}")
 async def get_notification(
     notification_id: int,
@@ -45,7 +64,7 @@ async def get_notification(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
 
 
-@router.post(
+@router.patch(
     "",
     response_model=NotificationResponse, 
     status_code=status.HTTP_201_CREATED,
@@ -56,9 +75,7 @@ async def send_notification(
 ) -> NotificationResponse:
 
     notification = await use_case.execute(
-        sender_id=payload.sender_id,
-        recipient_id=payload.recipient_id,
-        title=payload.title,
-        message=payload.message,
+        status=payload.status,
+        sent_at=payload.sent_at,
     )
     return NotificationResponse.model_validate(notification)

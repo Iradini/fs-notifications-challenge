@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session
 
 from fs_notifications_challenge.application.ports import NotificationRepository
-from fs_notifications_challenge.domain.notification import Notification
+from fs_notifications_challenge.domain.notification import Channel, Notification, Status
 from fs_notifications_challenge.infrastructure.models import NotificationModel
 
 
@@ -12,12 +12,16 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
 
     def add(self, notification: Notification) -> Notification:
         row = NotificationModel(
-            sender_id=notification.sender_id,
-            recipient_id=notification.recipient_id,
+            id=notification.id,
+            user_id=notification.user_id,
             title=notification.title,
-            message=notification.message,
-            is_read=notification.is_read,
+            content=notification.content,
+            channel=notification.channel.value,
+            recipient=notification.recipient,
+            status=notification.status,
             created_at=notification.created_at,
+            sent_at=notification.sent_at,
+            last_error=notification.last_error,
         )
         self._session.add(row)
         self._session.commit()
@@ -28,10 +32,13 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
     def _to_domain(row: NotificationModel) -> Notification:
         return Notification(
             id=row.id,
-            sender_id=row.sender_id,
-            recipient_id=row.recipient_id,
+            user_id=row.user_id,
             title=row.title,
-            message=row.message,
-            is_read=row.is_read,
+            content=row.content,
+            channel=Channel(row.channel),
+            recipient=row.recipient,
+            status=Status(row.status),
             created_at=row.created_at,
+            sent_at=row.sent_at,
+            last_error=row.last_error,
         )
