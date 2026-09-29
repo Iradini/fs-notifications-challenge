@@ -1,21 +1,29 @@
-from  sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from  sqlalchemy.ext.asyncio import (
+    AsyncSession, 
+    async_sessionmaker, 
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
+
+from fs_notifications_challenge.config import settings
 
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./blog.db"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+engine = create_async_engine(
+    settings.database_url,
     connect_args={"check_same_thread": False},
 )
 
-SessionLocal = sessionmaker(autocommit= False, autoflush=False, bind=engine)
+AsyncSessionLocal = async_sessionmaker(
+    engine, 
+    class_= AsyncSession, 
+    expire_on_commit=False
+)
 
 
 class Base(DeclarativeBase):
     pass
 
 
-def get_db():
-    with SessionLocal() as session:
+async def get_db():
+    async with AsyncSessionLocal() as session:
         yield session 

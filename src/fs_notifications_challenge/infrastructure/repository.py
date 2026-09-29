@@ -1,5 +1,6 @@
 # from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fs_notifications_challenge.application.ports import NotificationRepository
 from fs_notifications_challenge.domain.notification import Channel, Notification, Status
@@ -7,10 +8,10 @@ from fs_notifications_challenge.infrastructure.models import NotificationModel
 
 
 class SQLAlchemyNotificationRepository(NotificationRepository):
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    def add(self, notification: Notification) -> Notification:
+    async def add(self, notification: Notification) -> Notification:
         row = NotificationModel(
             id=notification.id,
             user_id=notification.user_id,
@@ -18,15 +19,24 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
             content=notification.content,
             channel=notification.channel.value,
             recipient=notification.recipient,
-            status=notification.status,
+            status=notification.status.value,
             created_at=notification.created_at,
             sent_at=notification.sent_at,
             last_error=notification.last_error,
         )
         self._session.add(row)
-        self._session.commit()
-        self._session.refresh(row)
+        await self._session.commit()
+        await self._session.refresh(row)
         return self._to_domain(row)
+
+    
+    async def list_all(self) -> list[Notification]:
+        result = await self._session.execute(
+            select(NotificationModel).order_by(NotificationModel.created_at.desc()),
+        )
+        rows = result.scalars().all()
+        return [self._to_domain(row) for row in rows]
+    
 
     @staticmethod
     def _to_domain(row: NotificationModel) -> Notification:
