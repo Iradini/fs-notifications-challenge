@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from fs_notifications_challenge.infrastructure import models # noqa: F401 (registers the table)
 from fs_notifications_challenge.infrastructure.database import Base, engine
+from fs_notifications_challenge.infrastructure.worker import run_outbox_worker
 from fs_notifications_challenge.interface.error_handlers import register_exception_handlers
 from fs_notifications_challenge.interface.pages import router as pages_router
 from fs_notifications_challenge.interface.routes import router as api_router
@@ -13,10 +16,17 @@ from fs_notifications_challenge.interface.routes import router as api_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Create tables on startingup using the async engine.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    worker_task = asyncio.create_task(run_outbox_worker())
+
     yield
+
+    # Stop de worker cleanly on shutdown.
+    worker_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await worker_task
     await engine.dispose()
 
 

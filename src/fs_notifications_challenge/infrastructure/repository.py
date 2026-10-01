@@ -25,8 +25,23 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
             last_error=notification.last_error,
         )
         self._session.add(row)
-        await self._session.commit()
-        await self._session.refresh(row)
+        await self._session.flush()  # assigns id, commit happens in get_db 
+        return self._to_domain(row)
+
+
+    async def get(self, notification_id: int) -> Notification | None:
+        row = await self._session.get(NotificationModel, notification_id)
+        return self._to_domain(row) if row is not None else None
+
+
+    async def update(self, notification: Notification) -> Notification:
+        row = await self._session.get(NotificationModel, notification.id)
+        if row is None:
+            raise ValueError(f"Notification {notification.id} not found")
+        row.status = notification.status.value
+        row.sent_at = notification.sent_at
+        row.last_error = notification.last_error
+        await self._session.flush()
         return self._to_domain(row)
 
     
@@ -34,8 +49,7 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
         result = await self._session.execute(
             select(NotificationModel).order_by(NotificationModel.created_at.desc()),
         )
-        rows = result.scalars().all()
-        return [self._to_domain(row) for row in rows]
+        return [self._to_domain(row) for row in result.scalars().all()]
     
 
     @staticmethod

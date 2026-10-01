@@ -41,3 +41,14 @@ class Notification():
             raise DomainError("Notification message cannot be blank.")
         if not self.recipient.strip():
             raise DomainError("Notification recipient cannot be blank.")
+
+
+    def mark_sent(self) -> None:
+        self.status = Status.SENT
+        self.sent_at = datetime.now(UTC)
+        self.last_error = None
+
+
+    def mark_failed(self, error: str) -> None:
+        self.status = Status.FAILED
+        self.last_error = error

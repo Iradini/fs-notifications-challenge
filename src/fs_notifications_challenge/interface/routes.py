@@ -14,7 +14,6 @@ from fs_notifications_challenge.infrastructure.repository import SQLAlchemyNotif
 from fs_notifications_challenge.interface.dependencies import (
     get_create_notification,
     get_list_notifications,
-    get_send_notification,
 )
 from fs_notifications_challenge.interface.schemas import (
     NotificationCreateRequest,
@@ -61,20 +60,3 @@ async def get_notification(
         if notification.id == notification_id:
             return NotificationResponse.model_validate(notification)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-
-
-@router.patch(
-    "",
-    response_model=NotificationResponse, 
-    status_code=status.HTTP_201_CREATED,
-)
-async def send_notification(
-    payload: SendNotificationRequest,
-    use_case: Annotated[SendNotification, Depends(get_send_notification)],
-) -> NotificationResponse:
-
-    notification = await use_case.execute(
-        status=payload.status,
-        sent_at=payload.sent_at,
-    )
-    return NotificationResponse.model_validate(notification)

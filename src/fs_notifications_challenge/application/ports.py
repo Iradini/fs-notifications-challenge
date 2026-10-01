@@ -1,13 +1,27 @@
 from abc import ABC, abstractmethod
 
 from fs_notifications_challenge.application.events import NotificationCreatedEvent
+from fs_notifications_challenge.domain.delivery import DeliveryAttempt
 from fs_notifications_challenge.domain.notification import Notification
 from fs_notifications_challenge.domain.user_profile import UserProfile
 
 class NotificationRepository(ABC):
     @abstractmethod
     async def add(self, notification: Notification) -> Notification:
-        """Persist a notification and return it with its id populated."""
+        """Persist a notification (asigns its id). Does not commit; the 
+        session lifecycle (get_db) commits once per request."""
+        ...
+
+
+    @abstractmethod
+    async def get(self, notification_id: int) -> Notification | None:
+        """Load one notification by id, or None"""
+        ...
+
+
+    @abstractmethod
+    async def update(self, notification: Notification) -> Notification:
+        """Persist changes to an existing notification (status, sent_at, ...)."""
         ...
 
 
@@ -17,13 +31,20 @@ class NotificationRepository(ABC):
         ...
 
 
+class DeliveryAttemptRepository(ABC):
+    @abstractmethod
+    async def add(self, attempt: DeliveryAttempt) -> DeliveryAttempt:
+        ...
+
+
 class EventPublisher(ABC):
-    """Port for publishing domain events.
+    """Publishing an event. The outbox implementation records it as a durable 
+    row in the same transaction as the notification, so a broker or a different 
+    transport can replace it without touching the use cases."""
     
-    The in-process implementation lives in infrastructure. Swapping it for a 
-    message broker or an outbox later is a change to that one adapter, not to
-    the use case that depend on this interface 
-    """
+    @abstractmethod
+    async def publish(self, event: NotificationCreatedEvent) -> None:
+        ...
 
 
 class UserRepository(ABC):
