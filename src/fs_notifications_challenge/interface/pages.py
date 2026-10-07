@@ -1,10 +1,16 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 
+from fs_notifications_challenge.application.delete_notification import DeleteNotification
+from fs_notifications_challenge.application.get_notification import GetNotification
 from fs_notifications_challenge.application.list_notification import ListNotifications
-from fs_notifications_challenge.interface.dependencies import get_list_notifications
+from fs_notifications_challenge.interface.dependencies import (
+    get_delete_notification,
+    get_get_notification,
+    get_list_notifications,    
+)
 from fs_notifications_challenge.interface.templates import templates
 
 
@@ -29,18 +35,20 @@ async def home(
 async def notification_page(
     request: Request, 
     notification_id: int,
-    list_notifications: Annotated[ListNotifications, Depends(get_list_notifications)],
+    get_notification: Annotated[GetNotification, Depends(get_get_notification)],
 ):
-    notifications = await list_notifications.execute()
-    for notification in notifications:
-        if notification.id ==  notification_id:
-            title = notification.title
-            return templates.TemplateResponse(
-                request,
-                "notification.html",
-                {"notification": notification, "title": title},
-            )
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Notification not found",
+    notification = await get_notification.execute(notification_id)
+    return templates.TemplateResponse(
+        request,
+        "notification.html",
+        {"notification": notification, "title": notification.title},
     )
+
+
+@router.post("/notifications/{notification_id}/delete", include_in_schema=False, name="delete_notification_page")
+async def delete_notification_page(
+    notification_id: int,
+    delete_notification: Annotated[DeleteNotification, Depends(get_delete_notification)],
+):
+    await delete_notification.execute(notification_id)
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)

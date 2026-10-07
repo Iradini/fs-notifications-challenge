@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,7 +13,9 @@ from fs_notifications_challenge.infrastructure.worker import run_outbox_worker
 from fs_notifications_challenge.interface.error_handlers import register_exception_handlers
 from fs_notifications_challenge.interface.pages import router as pages_router
 from fs_notifications_challenge.interface.routes import router as api_router
+from fs_notifications_challenge.interface.user_routers import router as users_router
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -32,6 +35,7 @@ async def lifespan(_app: FastAPI):
 
 MEDIA_DIR = Path(__file__).parent / "media"
 STATIC_DIR = Path(__file__).parent / "static"
+MEDIA_DIR.mkdir(exist_ok=True) 
 
 app = FastAPI(lifespan=lifespan)
 
@@ -41,9 +45,14 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 register_exception_handlers(app)
 
 app.include_router(pages_router)
-
 app.include_router(
     api_router,
     prefix="/api/notifications",
     tags=["notifications"],
+)
+
+app.include_router(
+    users_router,
+    prefix="/api/notifications/users",
+    tags=["users"],
 )

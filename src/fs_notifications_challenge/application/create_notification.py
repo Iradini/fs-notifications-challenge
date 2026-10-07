@@ -4,14 +4,19 @@ from fs_notifications_challenge.application.events import NotificationCreatedEve
 from fs_notifications_challenge.application.ports import (
     EventPublisher,
     NotificationRepository,
+    UserRepository,
 )
-from fs_notifications_challenge.domain.notification import Channel, Notification
+from fs_notifications_challenge.domain.channel import Channel
+from fs_notifications_challenge.domain.contact import ContactInfo
+from fs_notifications_challenge.domain.errors import NotFoundError
+from fs_notifications_challenge.domain.notification import Notification
 
 
 @dataclass
 class CreateNotification:
     repository: NotificationRepository
     publisher: EventPublisher
+    users: UserRepository
 
     async def execute(
             self,
@@ -19,8 +24,11 @@ class CreateNotification:
             title: str,
             content: str,
             channel: Channel,
-            recipient: str,
+            recipient: ContactInfo,
     ) -> Notification:
+        if await self.users.get(user_id) is None:
+            raise NotFoundError(f"User {user_id} not found.")
+        
         notification = Notification(
             user_id=user_id,
             title=title,
@@ -28,8 +36,7 @@ class CreateNotification:
             channel=channel,
             recipient=recipient,
         )
-        # Persist and commit FIRST...
+        # Persist (flush) and enqueue in the same transaction; get_db commits.
         saved = await self.repository.add(notification)
-        # ... THEN publish, so any listener sees a commited row
         await self.publisher.publish(NotificationCreatedEvent(notification=saved))
         return saved

@@ -5,13 +5,13 @@
       <div class="d-flex align-items-start gap-4">
         <img class="rounded-circle article-img flex-shrink-0"
              src="{{ url_for('static', path='profile_pics/default.jpg') }}"
-             alt="{{ notification.sender }}'s profile picture"
+             alt="{{ notification.user_id }}'s profile picture"
              width="64"
              height="64"
              loading="lazy">
         <div class="flex-grow-1">
           <div class="article-metadata mb-2">
-            <a class="me-2" href="#">{{ notification.sender }}</a>
+            <a class="me-2" href="#">User {{ notification.user_id }}</a>
             <small class="text-body-secondary">{{ notification.created_at }}</small>
           </div>
           <h2>

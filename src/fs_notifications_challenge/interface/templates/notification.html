@@ -16,8 +16,8 @@
         <h2 class="article-title">{{ notification.title }}</h2>
         <p class="article-content">{{ notification.content }}</p>
         <div class="article-content mb-2">
-          <a class="me-2" href="#">{{ notification.recipient }}</a>
-          <small class="text-body-secondary">{{ notification.channel.value }}</small>
+          <a class="me-2" href="#">{{ notification.recipient.address_for(notification.channel) }}</a>
+          <small class="text-body-secondary">{{ notification.channel.value }} · {{ notification.status.value }}</small>
         </div>
         <!-- Only show edit/delete options if the user is the author -->
         <!-- TODO: Add user authentication and authorization -->

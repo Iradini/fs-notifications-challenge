@@ -10,6 +10,12 @@ class OutboxMessage:
     id: int
     notification_id: int
     attempts: int
+    max_attempts: int
+
+    @property
+    def is_final_attempt(self) -> bool:
+        """True if this processing run is the last one before dead-lettering"""
+        return self.attempts + 1 >= self.max_attempts
 
 
 class OutboxRepository(ABC):
@@ -32,7 +38,26 @@ class OutboxRepository(ABC):
 
 
     @abstractmethod
-    async def mark_failed(self, message_id: int, error: str) -> None:
-        """Record a failed attempt. Keeps the message retryable until it hits
-        the max attempts, then marks it permanently failed."""
+    async def retry_later(self, message_id: int, error: str) -> None:
+        """Count the attempt and schedule the next one with backoff."""
+        ...
+
+
+    @abstractmethod
+    async def dead_letter(self, message_id: int, error: str) -> None:
+        """Give up: park the message as DEAD so it can be inspected/replayed."""
+        ...
+
+
+    @abstractmethod
+    async def reschedule(self, notification_id: int) -> None:
+        """The notification's channel/recipient changed: make its message due
+        now with a fresh retry budget (re-enqueue if somehow missing)."""
+        ...
+
+
+    @abstractmethod
+    async def cancel(self, notification_id: int) -> None:
+        """The notification was deleted: stop any pending delivery. The row is 
+        kept (CANCELLED) for the audit trail."""
         ...

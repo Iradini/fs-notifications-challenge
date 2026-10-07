@@ -7,25 +7,29 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from fs_notifications_challenge.domain.notification import DomainError
+from fs_notifications_challenge.domain.errors import ConflictError, DomainError, NotFoundError
 from fs_notifications_challenge.interface.templates import templates
 
 
+def _status_for(exc: DomainError) -> int:
+    if isinstance(exc, NotFoundError):
+        return status.HTTP_404_NOT_FOUND
+    if isinstance(exc, ConflictError):   # incl. NotificationLockedError, ConcurrentUpdateError
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 async def domain_error_handler(request: Request, exc: DomainError):
+    code = _status_for(exc)
     if request.url.path.startswith("/api"):
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            content={"detail": str(exc)},
-        )
+        return JSONResponse(status_code=code, content={"detail": str(exc)})
     return templates.TemplateResponse(
         request,
         "error.html",
         {
-            "status_code": status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "title": status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "message": str(exc),
+            "status_code": code, "title": code, "message": str(exc),
         },
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        status_code=code,
     )
 
 

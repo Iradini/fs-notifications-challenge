@@ -11,3 +11,8 @@ class NotificationCreatedEvent:
     """
 
     notification: Notification
+
+
+@dataclass(frozen=True)
+class NotificationUpdatedEvent:
+    notification: Notification
