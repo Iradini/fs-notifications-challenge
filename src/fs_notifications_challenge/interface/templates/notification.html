@@ -11,7 +11,7 @@
       <div class="flex-grow-1">
         <div class="article-metadata mb-2">
           <a class="me-2" href="#">{{ notification.user_id }}</a>
-          <small class="text-body-secondary">{{ notification.created_at }}</small>
+          <small class="text-body-secondary">{{ notification.created_at.strftime("%B %d, %Y") }}</small>
         </div>
         <h2 class="article-title">{{ notification.title }}</h2>
         <p class="article-content">{{ notification.content }}</p>
@@ -19,20 +19,47 @@
           <a class="me-2" href="#">{{ notification.recipient.address_for(notification.channel) }}</a>
           <small class="text-body-secondary">{{ notification.channel.value }} · {{ notification.status.value }}</small>
         </div>
-        <!-- Only show edit/delete options if the user is the author -->
-        <!-- TODO: Add user authentication and authorization -->
-        <div class="post-actions mt-3 pt-3 border-top">
-          <a class="btn btn-outline-secondary me-1" href="#">Edit Notification</a>
-          <button type="button"
-                  class="btn btn-outline-danger"
-                  data-bs-toggle="modal"
-                  data-bs-target="#deleteModal">Delete Notification</button>
+        <!-- Only show edit/delete options if user_id is 1 (TEMPORARY - until authentication) -->
+        {% if notification.user_id == 1 %}
+        <div class="notification-actions mt-3 pt-3 border-top">
+          <button type="button" class="btn btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editModal">Edit
+            Notification</button>
+          <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete
+            Notification</button>
         </div>
-        <!-- TODO: Add user authentication and authorization -->
+        {% endif %}
       </div>
     </div>
   </article>
-
+  <!-- Edit Notification Modal -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editModalLabel">Edit Notification</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="editNotificationForm">
+          <div class="modal-body">
+            <input type="hidden" name="notification_id" value="{{ notification.id }}">
+            <div class="mb-3">
+              <label for="editTitle" class="form-label">Title</label>
+              <input type="text" class="form-control" id="editTitle" name="title" value="{{ notification.title }}" required>
+            </div>
+            <div class="mb-3">
+              <label for="editContent" class="form-label">Content</label>
+              <textarea class="form-control" id="editContent" name="content" rows="5"
+                required>{{ notification.content }}</textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
   <!-- Delete Confirmation Modal -->
   <div class="modal fade"
        id="deleteModal"
@@ -44,21 +71,112 @@
         <div class="modal-header">
           <h5 class="modal-title" id="deleteModalLabel">Delete Notification?</h5>
           <button type="button"
-                  class="btn-close"
+                  class="btn-close btn-close-white"
                   data-bs-dismiss="modal"
                   aria-label="Close"></button>
         </div>
-        <!-- TODO: <form action="#" method="post"> -->
-        <form action="#">
-          <div class="modal-body">Are you sure you want to delete this notification? This action cannot be undone.</div>
-          <div class="modal-footer">
-            <button type="button"
-                    class="btn btn-outline-secondary"
-                    data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-outline-danger">Delete</button>
-          </div>
-        </form>
+        <div class="modal-body">
+          <p class="fs-5">Are you sure you want to delete this notification? This action cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
+        </div>
       </div>
     </div>
   </div>
 {% endblock content %}
+{% block scripts %}
+<script type="module">
+  import {
+    getErrorMessage,
+    hideModal,
+    showModal,
+  } from "/static/js/utils.js";
+
+  // Get notification ID from Jinja2 template
+  const notificationId = {{ notification.id }};
+
+  // Edit Notification Form Handler
+  const editForm = document.getElementById("editNotificationForm");
+  editForm.addEventListener("submit", async (event) => {
+    // Stop default form submission - we'll handle it with JavaScript
+    event.preventDefault();
+
+    // Gather form values into a plain object
+    const formData = new FormData(editForm);
+    const notificationData = Object.fromEntries(formData.entries());
+
+    // Remove notification_id from data (it's in the URL, not the body)
+    delete notificationData.notification_id;
+
+    try {
+      // PATCH for partial update (just title and content, not user_id)
+      const response = await fetch(`/api/notifications/${notificationId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(notificationData),
+      });
+
+      if (response.ok) {
+        document.getElementById("successMessage").textContent =
+          "Notification updated successfully!";
+
+        hideModal("editModal");
+        showModal("successModal");
+
+        document
+          .getElementById("successModal")
+          .addEventListener(
+            "hidden.bs.modal",
+            () => {
+              window.location.reload();
+            },
+            { once: true },
+          );
+      } else {
+        const error = await response.json();
+        document.getElementById("errorMessage").textContent =
+          getErrorMessage(error);
+
+        hideModal("editModal");
+        showModal("errorModal");
+      }
+    } catch (error) {
+      document.getElementById("errorMessage").textContent =
+        "Network error. Please check your connection and try again.";
+      showModal("errorModal");
+    }
+  });
+
+  // Delete Notification Handler - listen for click on delete button
+  const deleteButton = document.getElementById("confirmDelete");
+  deleteButton.addEventListener("click", async () => {
+    try {
+      // DELETE request - no body needed, notification_id is in the URL
+      const response = await fetch(`/api/notifications/${notificationId}`, {
+        method: "DELETE",
+      });
+
+      // 204 = No Content (success)
+      if (response.status === 204) {
+        // Notification is gone, redirect to home page
+        window.location.href = "/";
+      } else {
+        const error = await response.json();
+        document.getElementById("errorMessage").textContent =
+          getErrorMessage(error);
+
+        hideModal("deleteModal");
+        showModal("errorModal");
+      }
+    } catch (error) {
+      document.getElementById("errorMessage").textContent =
+        "Network error. Please check your connection and try again.";
+      showModal("errorModal");
+    }
+  });
+</script>
+{% endblock scripts %}

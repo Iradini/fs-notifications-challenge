@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Body, Depends, Response, status
 
 from fs_notifications_challenge.application.create_notification import CreateNotification
 from fs_notifications_challenge.application.delete_notification import DeleteNotification
@@ -15,6 +15,7 @@ from fs_notifications_challenge.interface.dependencies import (
     get_update_notification,
 )
 from fs_notifications_challenge.interface.schemas import (
+    CHANNEL_DISCRIMINATOR,
     NotificationCreateRequest,
     NotificationResponse,
     NotificationUpdateRequest,
@@ -32,7 +33,10 @@ async def list_notifications(
 
 @router.post("", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED)
 async def create_notification(
-    payload: NotificationCreateRequest,
+    payload: Annotated[
+        NotificationCreateRequest, 
+        Body(discriminator=CHANNEL_DISCRIMINATOR),
+    ],
     use_case: Annotated[CreateNotification, Depends(get_create_notification)],
 ) -> NotificationResponse:
     notification = await use_case.execute(

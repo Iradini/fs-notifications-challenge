@@ -58,7 +58,7 @@ async def test_profile_is_validated_and_normalized(client):
     uid = await make_user(client)
     ok = await client.put(f"/api/notifications/users/{uid}/profile", json={"phone": "+598 99 123 456", "token": TOKEN})
     assert ok.status_code == 200
-    assert ok.json()["profile"] == {"email": None, "phone": "+59899123456", "token": TOKEN}
+    assert ok.json()["profile"] == {"phone": "+59899123456", "token": TOKEN}
     assert (await client.put(f"/api/notifications/users/{uid}/profile", json={})).status_code == 422
     assert (await client.put("/api/notifications/users/999/profile", json={"email": "a@b.co"})).status_code == 404
 
@@ -66,10 +66,10 @@ async def test_profile_is_validated_and_normalized(client):
 # --- create -------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize(("overrides", "where"), [
-    ({"recipient": {"email": "string"}}, ["body", "recipient", "email"]),
-    ({"recipient": {"token": "string"}}, ["body", "recipient", "token"]),
-    ({"recipient": {"phone": "string"}}, ["body", "recipient", "phone"]),
-    ({"recipient": {}}, ["body", "recipient"]),
+    ({"recipient": {"email": "string"}}, ["body", "EMAIL", "recipient", "email"]),
+    ({"channel": "PUSH", "recipient": {"token": "string"}}, ["body", "PUSH", "recipient", "token"]),
+    ({"channel": "SMS", "recipient": {"phone": "string"}}, ["body", "SMS", "recipient", "phone"]),
+    ({"recipient": {}}, ["body", "EMAIL", "recipient", "email"]),  # missing
 ])
 async def test_invalid_recipient_formats_are_422(client, overrides, where):
     uid = await make_user(client)
@@ -78,11 +78,34 @@ async def test_invalid_recipient_formats_are_422(client, overrides, where):
     assert response.json()["detail"][0]["loc"] == where
 
 
-async def test_channel_without_matching_address_is_422(client):
+@pytest.mark.parametrize(("channel", "recipient"), [
+    ("SMS", {"phone": "+59899123456"}),
+    ("PUSH", {"token": TOKEN})
+])
+async def test_each_channel_ask_only_for_its_own_address(client, channel, recipient):
     uid = await make_user(client)
-    response = await client.post("/api/notifications", json=body(uid, channel="SMS"))
-    assert response.status_code == 422
-    assert "SMS" in response.json()["detail"]
+    response = await client.post("/api/notifications", json=body(uid, channel=channel, recipient=recipient))
+    assert response.status_code == 201, response.text
+    assert response.json()["recipient"] == recipient
+
+
+async def test_address_of_another_channel_is_rejected(client):
+    uid = await make_user(client)
+    wrong = await client.post("/api/notifications", json=body(uid, channel="SMS"))  # sends an email
+    assert wrong.status_code == 422
+    problems = {(tuple(e["loc"]), e["type"]) for e in wrong.json()["detail"]}
+    assert (("body", "SMS", "recipient", "phone"), "missing") in problems
+    assert (("body", "SMS", "recipient", "email"), "extra_forbidden") in problems
+
+    extra = await client.post(
+        "/api/notifications", json=body(uid, recipient={"email": "ana@example.com", "phone": "+59899123456"}),
+    )
+    assert extra.status_code == 422
+
+
+async def test_unknown_channel_is_422(client):
+    uid = await make_user(client)
+    assert (await client.post("/api/notifications", json=body(uid, channel="FAX"))).status_code == 422
 
 
 async def test_unknow_user_is_404(client):
@@ -121,7 +144,7 @@ async def test_patch_redirects_while_created_and_resets_outbox(client):
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["channel"] == "SMS"
-    assert patched.json()["recipient"] == {"email": None, "phone": "+59899123456", "token": None}
+    assert patched.json()["recipient"] == {"phone": "+59899123456"}
 
     async with AsyncSessionLocal() as s:
         row = (await s.execute(select(OutboxMessageModel))).scalar_one()
@@ -138,6 +161,12 @@ async def test_patch_rule(client):
 
     # Channel switch checked against the STORED recipient (only has an email)
     assert (await client.patch(f"/api/notifications/{nid}", json={"channel": "PUSH"})).status_code == 422
+    # A new recipient is exactly one address
+    two = {"recipient": {"email": "a@b.com", "phone": "+59899123456"}}
+    assert (await client.patch(f"/api/notifications/{nid}", json=two)).status_code == 422
+    # and it must match the current channel: a phone on a EMAIL notification is a 422
+    phone_only = {"recipient": "+59899123456"}
+    assert (await client.patch(f"/api/notifications/{nid}", json=phone_only)).status_code == 422
     assert (await client.patch(f"/api/notifications/{nid}", json={})).status_code == 422
     assert (await client.patch(f"/api/notifications/{nid}", json={"title": "New"})).json()["title"] == "New"
     assert (await client.patch("/api/notifications/999", json={"title": "x"})).status_code == 404
