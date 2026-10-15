@@ -17,6 +17,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 from pydantic_extra_types.phone_numbers import PhoneNumberValidator 
 
+from fs_notifications_challenge.application.list_notification import NotificationPage
 from fs_notifications_challenge.domain.channel import Channel
 from fs_notifications_challenge.domain.contact import ContactInfo
 from fs_notifications_challenge.domain.notification import Notification, Status
@@ -132,6 +133,39 @@ class ContactInfoResponse(BaseModel):
 
 class UserCreateRequest(BaseModel):
     email: EmailStr 
+    password: str = Field(min_length=8)
+
+
+class UserUpdateRequest(_Strict):
+    """PATCH /users/{id}: send only what changes. `profile` creates the profile or
+    REPLACES its whole contact block, so there is no null-vs-absent ambiguity
+    inside it. Nothing here destroys data: removing the profile is its own verb,
+    DELETE /user/{id}/profile."""
+
+    email: EmailStr | None = None
+    profile: ProfileInfo | None = None
+
+    @model_validator(mode="after")
+    def something_to_change(self):
+        for name in ("email", "profile"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"'{name}' cannot be null: leave it out to keep it as it is.")
+        if not self.model_fields_set:
+            raise ValueError("Provide an email, a profile or both.")
+        return self
+
+
+class PasswordChangeRequest(_Strict):
+    """PUT /users/{id}/password. The current password is asked again on purpose."""
+
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
+
+
+class AccountDeleteRequest(_Strict):
+    """DELETE /users/{id}. Irreversible, so the password is asked again."""
+
+    password: str = Field(min_length=1)
 
 
 class UserResponse(BaseModel):
@@ -139,10 +173,16 @@ class UserResponse(BaseModel):
     email: str
     profile: ContactInfoResponse | None = None
 
+
     @classmethod
     def from_domain(cls, user: User) -> UserResponse:
         profile = ContactInfoResponse.model_validate(user.profile.contact) if user.profile else None
         return cls(id=user.id, email=user.email, profile=profile)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 # --- notifications -----------------------------------------------------------------
@@ -158,7 +198,6 @@ class NotificationBase(BaseModel):
 
 
 class _NotificationCreateBase(BaseModel):
-    user_id: int  # TEMPORARY 
     title: Title
     content: Content
 
@@ -217,3 +256,21 @@ class NotificationResponse(NotificationBase):
     @classmethod
     def from_domain(cls, notification: Notification) -> NotificationResponse:
         return cls.model_validate(notification)
+
+
+class PaginatedNotificationsResponse(BaseModel):
+    notifications: list[NotificationResponse]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+    @classmethod
+    def from_page(cls, page: NotificationPage) -> PaginatedNotificationsResponse:
+        return cls(
+            notifications=[NotificationResponse.from_domain(n) for n in page.items],
+            total=page.total,
+            skip=page.skip,
+            limit=page.limit,
+            has_more=page.has_more,
+        )

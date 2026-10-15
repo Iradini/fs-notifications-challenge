@@ -20,6 +20,7 @@ class UserModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # selectin: async sessions can't lazy-load, so load the profile with the user.
     profile: Mapped[UserProfileModel | None] = relationship(

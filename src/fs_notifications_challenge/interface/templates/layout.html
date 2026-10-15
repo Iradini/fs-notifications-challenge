@@ -86,18 +86,25 @@
           </button>
           <div class="collapse navbar-collapse" id="navbarToggle">
             <div class="navbar-nav me-auto">
-              <a class="nav-link active"
+              <a data-auth="in" class="nav-link active"
                  aria-current="page"
                  href="{{ url_for("home") }}">Home</a>
             </div>
             <!-- Navbar Right Side -->
             <div class="navbar-nav">
-                <!-- NOTE: Once auth is set up, this button will only be visible when logged in -->
-              <button class="btn btn-outline-light mb-2 mb-md-0 me-md-2" type="button" data-bs-toggle="modal"
-                data-bs-target="#createNotificationModal">New Notification</button>
-                <!-- NOTE: Once auth is set up, this button will only be visible when logged in -->
-              <a class="btn btn-outline-light mb-2 mb-md-0 me-md-2" href="#">Login</a>
-              <a class="btn btn-light mb-2 mb-md-0 me-md-3" href="#">Register</a>
+                <!-- Shown when logged in (hidden by default, shown via JS) -->
+                <div data-auth="in" class="d-none">
+                  <button class="btn btn-outline-light mb-2 mb-md-0 me-md-2" type="button" data-bs-toggle="modal"
+                  data-bs-target="#createNotificationModal">New Notification</button>
+                  <a class="btn btn-light mb-2 mb-md-0 me-md-3" href="{{ url_for("account_page") }}" id="accountBtn">Account</a>
+                  <span id="usernameDisplay" class="navbar-text me-md-2"></span>
+                  <button class="btn btn-outline-light mb-2 mb-md-0 me-md-3" type="button" id="logoutBtn">Logout</button>
+                </div>
+                 <!-- Shown when logged out -->
+                <div data-auth="out" class="d-none">
+                  <a class="btn btn-outline-light mb-2 mb-md-0 me-md-2" href="{{ url_for('login_page') }}">Login</a>
+                  <a class="btn btn-light mb-2 mb-md-0 me-md-3" href="{{ url_for('register_page') }}">Register</a>
+                </div>
               <div class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle"
                    href="#"
@@ -145,7 +152,6 @@
         </aside>
       </div>
     </main>
-
     <footer class="mt-auto py-3 bg-body-tertiary border-top">
       <div class="container text-center">
         <p class="text-body-secondary mb-0">
@@ -182,19 +188,19 @@
               <!-- Recipient: one input per channel. Only the selected channel's input is
                shown and enabled; disabled inputs skip validation and aren't submitted. -->
               <fieldset class="mb-3">
-                <legend class="form-label fs-6 mb-2">Recipient</label><br>
+                <legend class="form-label fs-6 mb-2">Recipient</legend><br>
                 <div data-channel="EMAIL">
-                  <label for="email" class="form-label">Email</label><br>
-                  <input type="email" class="form-control" id="email" name="email" autocomplete="off" maxlength="255" pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
+                  <label for="recipientEmail" class="form-label">Email</label><br>
+                  <input type="email" class="form-control" id="recipientEmail" name="email" autocomplete="off" maxlength="255" pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
                     title="Use a full address, e.g. ana@example.com" required><br>
                 </div>
                 <div data-channel="SMS" hidden>
-                  <label for="phone" class="form-label">Phone number</label><br>
-                  <input type="tel"class="form-control" id="phone" name="phone" placeholder="+598 99 123 456" required disabled><br>
+                  <label for="recipientPhone" class="form-label">Phone Number</label><br>
+                  <input type="tel"class="form-control" id="recipientPhone" name="phone" autocomplete="tel" placeholder="+598 99 123 456" required disabled><br>
                 </div>
                 <div data-channel="PUSH" hidden>
-                  <label for="token" class="form-label">Device Token</label><br>
-                  <input type="text" class="form-control" id="token" name="token" minlength="32" maxlength="4096" pattern="^[A-Za-z0-9_\-:.]+$" 
+                  <label for="recipientToken" class="form-label">Device Token</label><br>
+                  <input type="text" class="form-control" id="recipientToken" name="token" minlength="32" maxlength="4096" pattern="^[A-Za-z0-9_\-:.]+$" 
                     title="At least 32 characters: letters, digits, _ . : ." required disabled>
                 </div>
               </fieldset>
@@ -274,13 +280,31 @@
       // Initialize
       setTheme(localStorage.getItem('theme') || 'auto');
       </script>
+      <!-- Auth State Management -->
+      <script type="module">
+        import { getCurrentUser, logout } from '/static/js/auth.js';
+        
+        // Show what belongs to the current auth state. Anything marked
+        // data-auth="in" (logged in) or data-auth="out" (logged out), in the
+        // navbar or in a page, starts hidden (d-none) and is revealed here. 
+        async function updateAuthUI() {
+            const user = await getCurrentUser();
+            document.querySelectorAll('[data-auth="in"]').forEach((el) => el.classList.toggle('d-none', !user));
+            document.querySelectorAll('[data-auth="out"]').forEach((el) => el.classList.toggle('d-none', !!user));
+            if (user) document.getElementById('usernameDisplay').textContent = user.email;
+        }
+        
+        // Logout handler
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+
+        // Update UI on page load
+        updateAuthUI();
+      </script>
+
       <!-- Create Notification Form Handler -->
       <script type="module">
-        import {
-          getErrorMessage,
-          hideModal,
-          showModal,
-        } from "/static/js/utils.js";
+        import { authFetch } from "/static/js/auth.js"
+        import { getErrorMessage, hideModal, showModal } from "/static/js/utils.js";
 
         const createForm = document.getElementById("createNotificationForm");
         const channelSelect = document.getElementById("channel");
@@ -314,12 +338,11 @@
             recipient,
           };
 
-          // TEMPORARY - hardcoded until authorization (Tutorial 11)
-          notificationData.user_id = 1;
+          // The owner is the logged-in user: the API reads it from the token
 
           try {
             // Notification to our API as JSON
-            const response = await fetch("/api/notifications", {
+            const response = await authFetch("/api/notifications", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",

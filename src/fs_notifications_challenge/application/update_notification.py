@@ -20,6 +20,7 @@ class UpdateNotification:
     async def execute(
             self,
             notification_id: int,
+            user_id: int,
             *,
             title: str | None = None,
             content: str | None = None,
@@ -27,7 +28,7 @@ class UpdateNotification:
             recipient: ContactInfo | None = None,
     ) -> Notification:
         notification = await self.repository.get(notification_id)
-        if notification is None:
+        if notification is None or notification.user_id != user_id:
             raise NotFoundError(f"Notification {notification_id} not found.")
         
         # Delivery first: it's refused (409), nothing has been mutated yet.

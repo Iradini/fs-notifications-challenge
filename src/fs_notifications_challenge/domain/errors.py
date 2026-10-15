@@ -13,3 +13,7 @@ class ConflictError(DomainError):
 class ConcurrentUpdateError(ConflictError):
     """Someone else changed the entity between our read and our write.
     Raised by repositories so callers never see ORM-specific exceptions."""
+
+
+class AuthenticationError(DomainError):
+    """Missing, invalid or expired credentials."""

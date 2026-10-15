@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fs_notifications_challenge.infrastructure import models # noqa: F401 (registers the table)
 from fs_notifications_challenge.infrastructure.database import Base, engine
 from fs_notifications_challenge.infrastructure.worker import run_outbox_worker
+from fs_notifications_challenge.interface.auth_routes import router as auth_router
 from fs_notifications_challenge.interface.error_handlers import register_exception_handlers
 from fs_notifications_challenge.interface.pages import router as pages_router
 from fs_notifications_challenge.interface.routes import router as api_router
@@ -52,7 +53,13 @@ app.include_router(
 )
 
 app.include_router(
+    auth_router, 
+    prefix="/api/auth",
+    tags=["auth"]
+)
+
+app.include_router(
     users_router,
-    prefix="/api/notifications/users",
+    prefix="/api/users",
     tags=["users"],
 )

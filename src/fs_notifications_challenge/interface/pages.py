@@ -1,16 +1,13 @@
-from typing import Annotated
+"""HTML pages. They are empty shells: they never read the database.
 
-from fastapi import APIRouter, Depends, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+The browser holds the login token (see static/js/auth.js), so each page's script
+fetches its own data from /api/... with `Authorization: Bearer ...`. The server
+can't tell who is asking when it rendes HTML, so nothing private is put in it.
+"""
 
-from fs_notifications_challenge.application.delete_notification import DeleteNotification
-from fs_notifications_challenge.application.get_notification import GetNotification
-from fs_notifications_challenge.application.list_notification import ListNotifications
-from fs_notifications_challenge.interface.dependencies import (
-    get_delete_notification,
-    get_get_notification,
-    get_list_notifications,    
-)
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+
 from fs_notifications_challenge.interface.templates import templates
 
 
@@ -19,36 +16,29 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False, name="home")
 @router.get("/notifications", response_class=HTMLResponse, include_in_schema=False, name="posts")
-async def home(
-    request: Request,
-    list_notifications: Annotated[ListNotifications, Depends(get_list_notifications)],
-):
-    notifications = await list_notifications.execute()
-    return templates.TemplateResponse(
-        request,
-        "home.html",
-        {"notifications": notifications, "title": "Home"},
-    )
+async def home(request: Request):
+    return templates.TemplateResponse(request, "home.html", {"title": "Home"})
 
 
-@router.get("/notifications/{notification_id}", include_in_schema=False)
-async def notification_page(
-    request: Request, 
-    notification_id: int,
-    get_notification: Annotated[GetNotification, Depends(get_get_notification)],
-):
-    notification = await get_notification.execute(notification_id)
+@router.get("/notifications/{notification_id}", include_in_schema=False, name="notification_page")
+async def notification_page(request: Request, notification_id: int):
     return templates.TemplateResponse(
         request,
         "notification.html",
-        {"notification": notification, "title": notification.title},
+        {"notification_id": notification_id, "title": "Notification"},
     )
 
 
-@router.post("/notifications/{notification_id}/delete", include_in_schema=False, name="delete_notification_page")
-async def delete_notification_page(
-    notification_id: int,
-    delete_notification: Annotated[DeleteNotification, Depends(get_delete_notification)],
-):
-    await delete_notification.execute(notification_id)
-    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+@router.get("/account", response_class=HTMLResponse, include_in_schema=False, name="account_page")
+async def account_page(request: Request):
+    return templates.TemplateResponse(request, "account.html", {"title": "Account"})
+
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False, name="login_page")
+async def login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"title": "Login"})
+
+
+@router.get("/register", response_class=HTMLResponse, include_in_schema=False, name="register_page")
+async def register_page(request: Request):
+    return templates.TemplateResponse(request, "register.html", {"title": "Register"})

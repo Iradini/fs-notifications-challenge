@@ -1,5 +1,4 @@
-# from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -72,14 +71,32 @@ class SQLAlchemyNotificationRepository(NotificationRepository):
         return self._to_domain(row)
 
     
-    async def list_all(self) -> list[Notification]:
+    async def list_for_user(self, user_id: int, *, skip: int, limit: int) -> list[Notification]:
         result = await self._session.execute(
             select(NotificationModel)
-            .where(NotificationModel.deleted_at.is_(None))
-            .order_by(NotificationModel.created_at.desc()),
+            .where(*self._visible_to(user_id))
+            # id breaks ties: without it, rows storing a created_at can swap places
+            # between two requests and show up on two pages (or on none)  
+            .order_by(NotificationModel.created_at.desc(), NotificationModel.id.desc())
+            .offset(skip)
+            .limit(limit),
         )
-        return [self._to_domain(row) for row in result.scalars().all()]
-    
+        return [self._to_domain(row) for row in result.scalars()]
+
+
+    async def count_for_user(self, user_id: int) -> int:
+        result = await self._session.execute(
+            select(func.count()).select_from(NotificationModel).where(*self._visible_to(user_id)),
+        )
+        return result.scalar_one()
+
+
+    @staticmethod
+    def _visible_to(user_id: int) -> tuple:
+        """The one definition of "a notification this user can see", shared by the
+        page and the total so two can never disagree."""
+        return (NotificationModel.user_id == user_id, NotificationModel.deleted_at.is_(None))
+
 
     @staticmethod
     def _to_domain(row: NotificationModel) -> Notification:

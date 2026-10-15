@@ -13,4 +13,4 @@ class GetUser:
         user = await self.repository.get(user_id)
         if user is None:
             raise NotFoundError(f"User {user_id} not found.")
-        return User
+        return user

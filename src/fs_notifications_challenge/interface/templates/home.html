@@ -1,25 +1,126 @@
 {% extends "layout.html" %}
 {% block content %}
-  {% for notification in notifications %}
+  <!-- Logged out: welcome banner (shown by the auth script in layout.html) -->
+   <section data-auth="out" class="d-none mb-4">
+      <div class="position-relative rounded-3 overflow-hidden shadow ratio ratio-16x9">
+        <img class="w-100 h-100 object-fit-cover" alt="A chihuahua welcoming you"
+          src="{{ url_for('static', path='profile_pics/login-bg.jpg') }}"
+          width="100"
+          height="100"
+          loading="lazy">
+        <div class="position-absolute top-0 start-0 w-100 h-100 bg-black bg-opacity-50"></div>
+        <div class="position-absolute top-50 start-50 translate-middle w-100 px-4 text-center text-white">
+          <h1 class="display-5 fw-bold">Welcome back</h1>
+          <p class="lead mb-3">Log in to see your notifications</p>
+        </div>
+      </div>
+   </section>
+
+  <!-- Logged in: the list is filled by the script below, from /api/notifications.
+   Nothing private is rendered by the server  -->
+   <section data-auth="in" class="d-none">
+    <div id="notificationList"></div>
+    <p id="emptyMessage" class="text-body-secondary d-none">
+      You have no notifications yet. Use "New Notification" to create one. 
+    </p>
+    <!-- Hidden until there is more than one page. The links are real hrefs (/?skip=10),
+    so the back button, middle click and bookmarks all work. -->
+    <nav id="pager" class="d-none align-items-center justify-content-between mb-4" aria-label="Notification pages">
+      <a id="prevPage" class="btn btn-outline-secondary btn-sm">&larr; Previous</a>
+      <small id="pageInfo" class="text-body-secondary"></small>
+      <a id="nextPage" class="btn btn-outline-secondary btn-sm">Next &rarr;</a>
+    </nav>
+   </section>
+   
+   <template id="notificationCard">
     <article class="content-section py-3 px-4 mb-4">
       <div class="d-flex align-items-start gap-4">
         <img class="rounded-circle article-img flex-shrink-0"
              src="{{ url_for('static', path='profile_pics/default.jpg') }}"
-             alt="{{ notification.user_id }}'s profile picture"
+             alt=""
              width="64"
              height="64"
              loading="lazy">
         <div class="flex-grow-1">
           <div class="article-metadata mb-2">
-            <a class="me-2" href="#">User {{ notification.user_id }}</a>
-            <small class="text-body-secondary">{{ notification.created_at }}</small>
+            <span class="me-2" data-field="channel"></span>
+            <small class="text-body-secondary" data-field="date"></small>
           </div>
           <h2>
-            <a class="article-title" href="{{ url_for('notification_page', notification_id=notification.id) }}">{{ notification.title }}</a>
+            <a class="article-title" data-field="title"></a>
           </h2>
-          <p class="article-content">{{ notification.content }}</p>
+          <p class="article-content" data-field="content"></p>
         </div>
       </div>
     </article>
-  {% endfor %}
+  </template>
 {% endblock content %}
+{% block scripts %}
+  <script type="module">
+    import { authFetch, getCurrentUser } from "/static/js/auth.js";
+    import { formatDate, getErrorMessage, showModal } from "/static/js/utils.js";
+    const list = document.getElementById("notificationList");
+    const empty = document.getElementById("emptyMessage");
+    const card = document.getElementById("notificationCard");
+    const pager = document.getElementById("pager");
+    const prevPage = document.getElementById("prevPage");
+    const nextPage = document.getElementById("nextPage");
+    const pageInfo = document.getElementById("pageInfo");
+
+    // /?skip=20 is the page beign viewed. Anything that is not a number >= 0
+    // (/?skip=abc, /?skip=-5) just mean the first page.
+    const skip =  Math.max(0, parseInt(new URLSearchParams(location.search).get("skip"), 10) || 0);
+
+    const pageUrl = (n) => (n > 0 ? `/?skip=${n}` : "/");
+    
+    function setLink(link, href) {
+      // An <a> without an href is neither focusable or clickable
+        link.classList.toggle("disabled", href === null);
+        link.setAttribute("aria-disabled", String(href === null));
+        if (href === null) link.removeAttribute("href");
+        else link.href = href;
+    }
+
+    function renderPage(page) {
+      pager.classList.toggle("d-none", page.total <= page.limit);
+      pager.classList.toggle("d-flex", page.total > page.limit);
+      pageInfo.textContent = 
+        `${page.skip + 1}\u2013${page.skip + page.notifications.length} of ${page.total}`;
+        setLink(prevPage, page.skip > 0 ? pageUrl(Math.max(0, page.skip - page.limit)) : null);
+        setLink(nextPage, page.has_more ? pageUrl(page.skip + page.limit) : null);
+    }
+
+    async function loadNotifications() {
+      const response = await authFetch(`/api/notifications?skip=${skip}`);
+      if (!response.ok) {
+        document.getElementById("errorMessage").textContent = getErrorMessage(await response.json());
+        showModal("errorModal");
+        return;
+      }
+      const page = await response.json();
+
+      // Notifications can be deleted after the link was made: ?skip=30 may now be
+      // past the end. Land on the last page instead of an empty one.
+      if (page.notifications.length === 0 && page.total > 0) {
+        location.replace(pageUrl(Math.floor((page.total - 1) / page.limit) * page.limit));
+        return;
+      }
+      empty.classList.toggle("d-none", page.total > 0);
+
+      for (const n of page.notifications) {
+        const node = card.content.cloneNode(true);
+        // textContent, never innerHTML: titles and content are user input
+        node.querySelector('[data-field="channel"]').textContent = `${n.channel} · ${n.status}`;
+        node.querySelector('[data-field="date"]').textContent = formatDate(n.created_at);
+        const title = node.querySelector('[data-field="title"]');
+        title.textContent = n.title;
+        title.href = `/notifications/${n.id}`;
+        node.querySelector('[data-field="content"]').textContent = n.content;
+        list.append(node);
+      }
+      renderPage(page)
+    }
+
+    if (await getCurrentUser()) await loadNotifications();
+  </script>
+{% endblock scripts %}

@@ -4,7 +4,7 @@ from fs_notifications_challenge.application.events import NotificationCreatedEve
 from fs_notifications_challenge.domain.channel import Channel
 from fs_notifications_challenge.domain.delivery import DeliveryAttempt, DeliveryResult
 from fs_notifications_challenge.domain.notification import Notification
-from fs_notifications_challenge.domain.user import User, UserProfile
+from fs_notifications_challenge.domain.user import User
 
 
 class NotificationRepository(ABC):
@@ -24,14 +24,21 @@ class NotificationRepository(ABC):
 
     @abstractmethod
     async def update(self, notification: Notification) -> Notification:
-        """Persist every mutable filed. Raises ConcurrentUpdateError if someone
+        """Persist every mutable field. Raises ConcurrentUpdateError if someone
         else changed the row since it was loaded."""
         ...
 
 
     @abstractmethod
-    async def list_all(self) -> list[Notification]:
-        """Return every non-deleted notification, newest first."""
+    async def list_for_user(self, user_id: int, *, skip: int, limit: int) -> list[Notification]:
+        """One page of the user's non-deleted notifications, newest first. The id
+        breaks created_at ties, so a page boundary never reshuffles rows."""
+        ...
+
+
+    @abstractmethod
+    async def count_for_user(self, user_id: int) -> int:
+        """How many non-deleted notifications the user has in total (every page)."""
         ...
 
 
@@ -57,11 +64,19 @@ class UserRepository(ABC):
     @abstractmethod
     async def get_by_email(self, email: str) -> User | None:
         ...
+        
+
+    @abstractmethod
+    async def delete(self, user: User) -> None:
+        """Erase the user and everything that belongs to them (profile, 
+        notifications, their outbox rows and delivery attempts)."""
+        ...
 
 
     @abstractmethod
-    async def save_profile(self, profile: UserProfile) -> UserProfile:
-        """Create or replace the user's profile (it's 1:1)"""
+    async def update(self, user: User) -> User:
+        """Persist the user's new email and profile (creating, replacing or removing
+        the profile row to match). Raises ConflictError if the email is taken."""
         ...
 
 
@@ -88,4 +103,32 @@ class ChannelSender(ABC):
     async def send(self, notification: Notification) -> DeliveryResult:
         """Must not raise for expected failures. Return
         DeliveryResult.rejected(...) or DeliveryResult.transient(...)."""
+        ...
+
+
+class PasswordHasher(ABC):
+    """Turns password into hashes and checks them. The algorithm is a detail."""
+
+
+    @abstractmethod
+    def hash_password(self, password: str) -> str:
+        ...
+
+    @abstractmethod
+    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        ...
+
+
+class TokenService(ABC):
+    """Issues and checks access token. Callers never sees JWT, claims or keys."""
+
+
+    @abstractmethod
+    def issue(self, user_id: int) -> str:
+        ...
+
+
+    @abstractmethod
+    def verify_access_token(self, token: str) -> int:
+        """Return the user id. Raise AuthenticationError if invalid or expired."""
         ...

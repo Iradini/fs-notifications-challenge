@@ -7,11 +7,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from fs_notifications_challenge.domain.errors import ConflictError, DomainError, NotFoundError
+from fs_notifications_challenge.domain.errors import AuthenticationError,  ConflictError, DomainError, NotFoundError
 from fs_notifications_challenge.interface.templates import templates
 
 
 def _status_for(exc: DomainError) -> int:
+    if isinstance(exc, AuthenticationError):
+        return status.HTTP_401_UNAUTHORIZED
     if isinstance(exc, NotFoundError):
         return status.HTTP_404_NOT_FOUND
     if isinstance(exc, ConflictError):   # incl. NotificationLockedError, ConcurrentUpdateError
@@ -21,8 +23,9 @@ def _status_for(exc: DomainError) -> int:
 
 async def domain_error_handler(request: Request, exc: DomainError):
     code = _status_for(exc)
+    headers = {"WWW-Authenticate": "Bearer"} if code == status.HTTP_401_UNAUTHORIZED else None
     if request.url.path.startswith("/api"):
-        return JSONResponse(status_code=code, content={"detail": str(exc)})
+        return JSONResponse(status_code=code, content={"detail": str(exc)}, headers=headers)
     return templates.TemplateResponse(
         request,
         "error.html",

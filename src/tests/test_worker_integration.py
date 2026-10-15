@@ -37,7 +37,7 @@ async def _scenario(channel: Channel, recipient: str, failure_rate: float, cycle
     # "POST": notification + outbox row in one transaction
     field = {Channel.EMAIL: "email", Channel.SMS: "phone", Channel.PUSH: "token"}[channel]
     async with Session() as s:
-        s.add(UserModel(id=1, email="owner@example.com"))
+        s.add(UserModel(id=1, email="owner@example.com", password_hash="not-a-real-hash"))
         n = await SQLAlchemyNotificationRepository(s).add(
             Notification(user_id=1, title="Hi", content="There", channel=channel, 
                          recipient=ContactInfo(**{field: recipient}),

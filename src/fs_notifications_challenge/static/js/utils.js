@@ -34,3 +34,10 @@ export function hideModal(modalId){
     const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById(modalId));
     if (modal) modal.hide();
 }
+
+// The API sends UTC datetimes; SQLite hands them without a timezone suffix,
+// and JavaScript would read "2026-10-09T21:00:00" as the browser's local time.
+export function formatDate(value) {
+    const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(value);
+    return new Date(hasZone ? value : `${value}Z`).toLocaleString();
+} 

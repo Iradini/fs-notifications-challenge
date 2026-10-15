@@ -34,8 +34,13 @@ class InMemoryNotifications(NotificationRepository):
         return n
 
 
-    async def list_all(self):
-        return list(self.items.values())
+    async def list_for_user(self, user_id: int, *, skip: int, limit: int):
+        mine = [n for n in self.items.values() if n.user_id == user_id]
+        return mine[skip:skip + limit]
+
+
+    async def count_for_user(self, user_id):
+        return sum(1 for n in self.times.values() if n.user_id == user_id)
 
 
 class InMemoryAttempts(DeliveryAttemptRepository):
@@ -80,7 +85,7 @@ def test_success_marks_sent_and_records_attempt():
     assert attempts.items[0].status is AttemptStatus.SUCCESS
 
 
-def test_permanent_failure_marks_failed_wothout_retry():
+def test_permanent_failure_marks_failed_without_retry():
     n, _, attempts, uc = setup(DeliveryResult.rejected("bad address"))
     assert run(uc.execute(1, final_attempt=False)).outcome is Outcome.REJECTED
     assert n.status is Status.FAILED and n.last_error == "bad address"

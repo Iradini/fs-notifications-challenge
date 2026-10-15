@@ -30,15 +30,27 @@ async def client():
     await engine.dispose()  # each test gets its own event loop ; don't reuse pooled connections
 
 
+PASSWORD = "Test1234+"
+
+async def login(client, email="owner@example.com") -> None:
+    """From now on `client` acts as this user (it sends their Bearer token)."""
+    response = await client.post("/api/auth/token", data={"username": email, "password": PASSWORD})
+    assert response.status_code == 200, response.text
+    client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
+
+
 async def make_user(client, email="owner@example.com") -> int:
-    response = await client.post("/api/notifications/users", json={"email": email})
+    """Register a user and log in as them."""
+    response = await client.post("/api/users", json={"email": email, "password": PASSWORD})
     assert response.status_code == 201, response.text
+    await login(client, email)
     return response.json()["id"]
 
 
-def body(user_id, **overrides):
+def body(**overrides):
+    # No user_id: the owner is whoever the token belongs to
     return {
-        "user_id": user_id, "title": "Test", "content": "Test Content",
+        "title": "Test", "content": "Test Content",
         "channel": "EMAIL", "recipient": {"email": "test@example.com"}, **overrides,
     }
 
@@ -51,16 +63,53 @@ async def run_worker_once():
 
 async def test_duplicate_user_email_is_409(client):
     await make_user(client)
-    assert (await client.post("/api/notifications/users", json={"email": "owner@example.com"})).status_code == 409
+    assert (await client.post("/api/users", json={"email": "owner@example.com", "password": PASSWORD})).status_code == 409
+
+
+async def test_create_user_never_returns_or_stores_the_plain_password(client):
+    response = await client.post("/api/users", json={"email": "owner@example.com", "password": PASSWORD})
+    assert response.status_code == 201
+    assert set(response.json()) == {"id", "email", "profile"}
+    async with AsyncSessionLocal() as s:
+        from fs_notifications_challenge.infrastructure.models import UserModel
+        stored = (await s.execute(select(UserModel.password_hash))).scalar_one()
+    assert stored != PASSWORD and stored.startswith("$argon2")
+
+
+async def test_create_requires_a_password_of_8_chars(client):
+    assert (await client.post("/api/users", json={"email": "ana@example.com"})).status_code == 422
+    assert (await client.post("/api/users", json={"email": "ana@example.com", "password": "short"})).status_code == 422
+
+
+async def test_login_then_me(client):
+    await make_user(client)
+    login = await client.post("/api/auth/token", data={"username": "owner@example.com", "password": PASSWORD})
+    assert login.status_code == 200
+    assert login.json()["token_type"] == "bearer"
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
+    assert me.status_code == 200 and me.json()["email"] == "owner@example.com"
+
+
+async def test_login_failures_are_401_and_indistinguishable(client):
+    await make_user(client)
+    wrong_password = await client.post("/api/auth/token", data={"username": "owner@example.com", "password": "wrong-password"})
+    unknown_email = await client.post("/api/auth/token", data={"username": "another@example.com", "password": PASSWORD})
+    assert wrong_password.status_code == unknown_email.status_code == 401
+    assert wrong_password.json() == unknown_email.json() 
+
+
+async def test_me_without_or_with_a_bad_token_is_401(client):
+    assert (await client.get("/api/auth/me")).status_code == 401
+    assert (await client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})).status_code == 401
 
 
 async def test_profile_is_validated_and_normalized(client):
     uid = await make_user(client)
-    ok = await client.put(f"/api/notifications/users/{uid}/profile", json={"phone": "+598 99 123 456", "token": TOKEN})
+    ok = await client.patch(f"/api/users/{uid}", json={"profile": {"phone": "+598 99 123 456", "token": TOKEN}})
     assert ok.status_code == 200
     assert ok.json()["profile"] == {"phone": "+59899123456", "token": TOKEN}
-    assert (await client.put(f"/api/notifications/users/{uid}/profile", json={})).status_code == 422
-    assert (await client.put("/api/notifications/users/999/profile", json={"email": "a@b.co"})).status_code == 404
+    assert (await client.patch(f"/api/users/{uid}", json={"profile": {}})).status_code == 422
+    assert (await client.patch("/api/users/999", json={"profile": {"email": "a@b.co"}})).status_code == 404
 
 
 # --- create -------------------------------------------------------------------------------------
@@ -72,8 +121,8 @@ async def test_profile_is_validated_and_normalized(client):
     ({"recipient": {}}, ["body", "EMAIL", "recipient", "email"]),  # missing
 ])
 async def test_invalid_recipient_formats_are_422(client, overrides, where):
-    uid = await make_user(client)
-    response = await client.post("/api/notifications", json=body(uid, **overrides))
+    await make_user(client)
+    response = await client.post("/api/notifications", json=body(**overrides))
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == where
 
@@ -83,38 +132,86 @@ async def test_invalid_recipient_formats_are_422(client, overrides, where):
     ("PUSH", {"token": TOKEN})
 ])
 async def test_each_channel_ask_only_for_its_own_address(client, channel, recipient):
-    uid = await make_user(client)
-    response = await client.post("/api/notifications", json=body(uid, channel=channel, recipient=recipient))
+    await make_user(client)
+    response = await client.post("/api/notifications", json=body(channel=channel, recipient=recipient))
     assert response.status_code == 201, response.text
     assert response.json()["recipient"] == recipient
 
 
 async def test_address_of_another_channel_is_rejected(client):
-    uid = await make_user(client)
-    wrong = await client.post("/api/notifications", json=body(uid, channel="SMS"))  # sends an email
+    await make_user(client)
+    wrong = await client.post("/api/notifications", json=body(channel="SMS"))  # sends an email
     assert wrong.status_code == 422
     problems = {(tuple(e["loc"]), e["type"]) for e in wrong.json()["detail"]}
     assert (("body", "SMS", "recipient", "phone"), "missing") in problems
     assert (("body", "SMS", "recipient", "email"), "extra_forbidden") in problems
 
     extra = await client.post(
-        "/api/notifications", json=body(uid, recipient={"email": "ana@example.com", "phone": "+59899123456"}),
+        "/api/notifications", json=body(recipient={"email": "ana@example.com", "phone": "+59899123456"}),
     )
     assert extra.status_code == 422
 
 
 async def test_unknown_channel_is_422(client):
+    await make_user(client)
+    assert (await client.post("/api/notifications", json=body(channel="FAX"))).status_code == 422
+
+
+async def test_notification_routes_require_a_token(client):
+    for method, url, kwargs in [
+        ("GET", "/api/notifications", {}),
+        ("POST", "/api/notifications", {"json": body()}),
+        ("GET", "/api/notifications/1", {}),
+        ("PATCH", "/api/notifications/1", {"json": {"title": "x"}}),
+        ("DELETE", "/api/notifications/1", {}),
+    ]:
+        response = await client.request(method, url, **kwargs)
+        assert response.status_code == 401, (method, url)
+        assert response.headers["www-authenticate"] == "Bearer"
+    garbage = {"Authorization": "Bearer garbage"}
+    assert (await client.get("/api/notifications", headers=garbage)).status_code == 401
+
+
+async def test_the_owner_comes_from_the_token_not_the_body(client):
     uid = await make_user(client)
-    assert (await client.post("/api/notifications", json=body(uid, channel="FAX"))).status_code == 422
+    # a user_id in the body is not part of the schema; the notification belongs to the token's user
+    created = await client.post("/api/notifications", json={**body(), "user_id": 999})
+    assert created.status_code == 201
+    assert created.json()["user_id"] == uid
 
 
-async def test_unknow_user_is_404(client):
-    assert (await client.post("/api/notifications", json=body(999))).status_code == 404
+async def test_users_only_see_and_touch_their_own_notifications(client):
+    await make_user(client, "ana@example.com")
+    mine = (await client.post("/api/notifications", json=body(title="Ana's"))).json()["id"]
+
+    await make_user(client, "bea@example.com")   # the client now acts as Bea
+    assert (await client.get("/api/notifications")).json()["notifications"] == []
+    # someone else's notification looks exactly like one that doesn't exist
+    assert (await client.get(f"/api/notifications/{mine}")).status_code == 404
+    assert (await client.patch(f"/api/notifications/{mine}", json={"title": "hacked"})).status_code == 404
+    assert (await client.delete(f"/api/notifications/{mine}")).status_code == 404
+
+    await login(client, "ana@example.com")        # and Ana's is untouched
+    assert (await client.get(f"/api/notifications/{mine}")).json()["title"] == "Ana's"
+    assert [n["title"] for n in (await client.get("/api/notifications")).json()["notifications"]] == ["Ana's"]
+
+
+async def test_a_profile_is_private_to_its_owner(client):
+    ana = await make_user(client, "ana@example.com")
+    await client.patch(f"/api/users/{ana}", json={"profile": {"phone": "+598 99 123 456"}})
+    assert (await client.get(f"/api/users/{ana}")).json()["profile"] == {"phone": "+59899123456"}
+
+    await make_user(client, "bea@example.com")
+    assert (await client.get(f"/api/users/{ana}")).status_code == 404
+    assert (await client.patch(f"/api/users/{ana}", json={"profile": {"phone": "+598 99 000 000"}})).status_code == 404
+
+    client.headers.pop("Authorization")
+    assert (await client.get(f"/api/users/{ana}")).status_code == 401
 
 
 async def test_create_get_and_worker_sends_it(client):
-    uid = await make_user(client)
-    created = await client.post("/api/notifications", json=body(uid))
+    await make_user(client)
+    created = await client.post("/api/notifications", json=body())
     assert created.status_code == 201
     nid = created.json()["id"]
     assert created.json()["status"] == "CREATED"
@@ -129,8 +226,8 @@ async def test_create_get_and_worker_sends_it(client):
 # --- update -----------------------------------------------------------------------
 
 async def test_patch_redirects_while_created_and_resets_outbox(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     # simulate a delivery waiting out a long backoff
     async with AsyncSessionLocal() as s:
@@ -156,8 +253,8 @@ async def test_patch_redirects_while_created_and_resets_outbox(client):
 
 
 async def test_patch_rule(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     # Channel switch checked against the STORED recipient (only has an email)
     assert (await client.patch(f"/api/notifications/{nid}", json={"channel": "PUSH"})).status_code == 422
@@ -188,8 +285,8 @@ async def test_patch_rule(client):
 
 
 async def test_editing_after_sent_keeps_what_was_delivered(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
     await run_worker_once()
     await client.patch(f"/api/notifications/{nid}", json={"title": "Edited", "content": "New Text"})
 
@@ -201,8 +298,8 @@ async def test_editing_after_sent_keeps_what_was_delivered(client):
 # --- persistence guarantees --------------------------------------------------------------
 
 async def test_worker_and_patch_race_is_detected(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     async with AsyncSessionLocal() as worker_s, AsyncSessionLocal() as api_s: 
         worker_repo = SQLAlchemyNotificationRepository(worker_s)
@@ -234,13 +331,13 @@ async def rows(model):
 
 
 async def test_delete_hides_it_but_keeps_the_audit_trail(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
     assert (await client.delete(f"/api/notifications/{nid}")).status_code == 204
 
     # Gone from the API
     assert (await client.get(f"/api/notifications/{nid}")).status_code == 404
-    assert (await client.get("/api/notifications")).json() == []
+    assert (await client.get("/api/notifications")).json()["notifications"] == []
     assert (await client.patch(f"/api/notifications/{nid}", json={"title": "x"})).status_code == 404
     assert (await client.delete(f"/api/notifications/{nid}")).status_code == 404
 
@@ -254,8 +351,8 @@ async def test_delete_hides_it_but_keeps_the_audit_trail(client):
 
 
 async def test_delete_sent_keeps_its_delivery_history(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
     await run_worker_once()
     assert (await client.delete(f"/api/notifications/{nid}")).status_code == 204
 
@@ -268,8 +365,8 @@ async def test_delete_sent_keeps_its_delivery_history(client):
 
 
 async def test_delete_while_worker_holds_the_message(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     async with AsyncSessionLocal() as s:
         outbox = SQLAlchemyOutboxRepository(s)
@@ -290,8 +387,8 @@ async def test_delete_loses_race_against_worker_with_409(client):
     delete must not silently overwrite that. The client gets 409 and retries."""
     from fs_notifications_challenge.domain.errors import ConflictError
     
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     async with AsyncSessionLocal() as api_s:
         api_repo = SQLAlchemyNotificationRepository(api_s)
@@ -313,8 +410,8 @@ async def test_delete_during_the_provider_call(client):
     from fs_notifications_challenge.infrastructure.channels.email import EmailSender
 
 
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
+    await make_user(client)
+    nid = (await client.post("/api/notifications", json=body())).json()["id"]
 
     class DeletedMidSend(EmailSender):
         async def send(self, notification):
@@ -330,8 +427,41 @@ async def test_delete_during_the_provider_call(client):
 
 
 async def test_delete_from_the_html_page_redirects_home(client):
-    uid = await make_user(client)
-    nid = (await client.post("/api/notifications", json=body(uid))).json()["id"]
-    response = await client.post(f"/notifications/{nid}/delete")
-    assert (response.status_code, response.headers["location"]) == (303, "/")
-    assert (await client.get(f"/api/notifications/{uid}")).status_code == 404
+    await make_user(client)
+    created = (await client.post("/api/notifications", json=body(title="Top secret title"))).json()
+    client.headers.pop("Authorization")   # a visitor with no token
+    for url in ("/", f"/notifications/{created['id']}", f"/account", "/login", "/register"):
+        page = await client.get(url)
+        assert page.status_code == 200, url
+        assert "Top secret title" not in page.text and "owner@example.com" not in page.text, url
+    # and the old unauthenticated delete form endpoint no longer exists
+    assert (await client.post(f"/notifications/{created['id']}/delete")).status_code in (404, 405)
+
+
+async def test_pages_are_shells_that_leak_nothing(client):
+    await make_user(client)
+    created = (await client.post("/api/notifications", json=body(title="Top secret title"))).json()
+    client.headers.pop("Authorization")   # a visitor with no token
+    # URLs come from the route names, so renaming a path doesn't silently skip a page
+    urls = (
+        app.url_path_for("home"),
+        app.url_path_for("notification_page", notification_id=created["id"]),
+        app.url_path_for("account_page"),
+        app.url_path_for("login_page"),
+        app.url_path_for("register_page"),
+    )
+    for url in urls:
+        page = await client.get(url)
+        assert page.status_code == 200, url
+        assert "Top secret title" not in page.text and "owner@example.com" not in page.text, url
+    # and the old unauthenticated delete form endpoint no longer exists
+    assert (await client.post(f"/notifications/{created['id']}/delete")).status_code in (404, 405)
+
+
+async def test_the_detail_page_receives_its_notification_id(client):
+    """The page's script builds its API URL from this number. If the route doesn't
+    pass `notification_id`, Jinja renders `const notificationId = ;` and the whole
+    script dies with a syntax error, so the page stays blank."""
+    page = await client.get(app.url_path_for("notification_page", notification_id=42))
+    assert page.status_code == 200
+    assert "const notificationId = 42;" in page.text

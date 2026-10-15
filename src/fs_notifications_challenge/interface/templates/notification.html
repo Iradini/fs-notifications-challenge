@@ -1,36 +1,38 @@
 {% extends "layout.html" %}
 {% block content %}
-  <article class="content-section py-3 px-4 mb-4">
+<!-- Filled by the script below from "/api/notifications/{id}" 
+ The API only returns it to its owner; nothing private is rendered here -->
+  <article id="notificationView" data-auth="in" class="content-section py-3 px-4 mb-4">
     <div class="d-flex align-items-start gap-4">
       <img class="rounded-circle article-img flex-shrink-0"
            src="{{ url_for('static', path='profile_pics/default.jpg') }}"
-           alt="{{ notification.user_id }}'s profile picture"
+           alt=""
            width="64"
            height="64"
            loading="lazy">
       <div class="flex-grow-1">
         <div class="article-metadata mb-2">
-          <a class="me-2" href="#">{{ notification.user_id }}</a>
-          <small class="text-body-secondary">{{ notification.created_at.strftime("%B %d, %Y") }}</small>
+          <span class="me-2" id="metaChannel"></span>
+          <small class="text-body-secondary" id="metaDate"></small>
         </div>
-        <h2 class="article-title">{{ notification.title }}</h2>
-        <p class="article-content">{{ notification.content }}</p>
+        <h2 class="article-title" id="viewTitle"></h2>
+        <p class="article-content" id="viewContent"></p>
         <div class="article-content mb-2">
-          <a class="me-2" href="#">{{ notification.recipient.address_for(notification.channel) }}</a>
-          <small class="text-body-secondary">{{ notification.channel.value }} · {{ notification.status.value }}</small>
+          <a class="me-2 text-break" id="viewRecipient"></a>
+          <small class="text-body-secondary" id="viewStatus"></small>
         </div>
-        <!-- Only show edit/delete options if user_id is 1 (TEMPORARY - until authentication) -->
-        {% if notification.user_id == 1 %}
         <div class="notification-actions mt-3 pt-3 border-top">
           <button type="button" class="btn btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editModal">Edit
             Notification</button>
           <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete
             Notification</button>
         </div>
-        {% endif %}
       </div>
     </div>
   </article>
+  <p id="notFoundMessage" class="text-body-secondary d-none">
+    This notification doesn't exists. <a href="{{ url_for('home') }}">Back to your notifications</a>
+  </p>
   <!-- Edit Notification Modal -->
   <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -41,15 +43,13 @@
         </div>
         <form id="editNotificationForm">
           <div class="modal-body">
-            <input type="hidden" name="notification_id" value="{{ notification.id }}">
             <div class="mb-3">
               <label for="editTitle" class="form-label">Title</label>
-              <input type="text" class="form-control" id="editTitle" name="title" value="{{ notification.title }}" required>
+              <input type="text" class="form-control" id="editTitle" name="title" required>
             </div>
             <div class="mb-3">
               <label for="editContent" class="form-label">Content</label>
-              <textarea class="form-control" id="editContent" name="content" rows="5"
-                required>{{ notification.content }}</textarea>
+              <textarea class="form-control" id="editContent" name="content" rows="5" required></textarea>
             </div>
           </div>
           <div class="modal-footer">
@@ -88,95 +88,95 @@
 {% endblock content %}
 {% block scripts %}
 <script type="module">
-  import {
-    getErrorMessage,
-    hideModal,
-    showModal,
-  } from "/static/js/utils.js";
+  import { authFetch, getCurrentUser } from "/static/js/auth.js";
+  import { formatDate, getErrorMessage, hideModal, showModal } from "/static/js/utils.js";
 
   // Get notification ID from Jinja2 template
-  const notificationId = {{ notification.id }};
+  const notificationId = {{ notification_id }};
+  const user = await getCurrentUser();
+
+  function showError(message) {
+    document.getElementById("errorMessage").textContent = message;
+    showModal("errorModal");
+  }
+
+  async function loadNotification() {
+    const response = await authFetch(`/api/notifications/${notificationId}`);
+    if (response.status == 404) {
+      document.getElementById("notFoundMessage").classList.remove("d-none");
+      return;
+    }
+    if (!response.ok) {
+      showError(getErrorMessage(await response.json()));
+      return;
+    }
+    const n = await response.json();
+    // textContent / .value, never innerHTML: titles and content are user input
+    document.getElementById("metaChannel").textContent = n.channel;
+    document.getElementById("metaDate").textContent = formatDate(n.created_at);
+    document.getElementById("viewTitle").textContent = n.title;
+    document.getElementById("viewContent").textContent = n.content;
+    document.getElementById("viewRecipient").textContent = n.recipient.email ?? n.recipient.phone ?? n.recipient.token;
+    document.getElementById("viewStatus").textContent = n.status;
+    document.getElementById("editTitle").value = n.title;
+    document.getElementById("editContent").value = n.content;
+    document.getElementById("notificationView").classList.remove("d-none");
+  }
 
   // Edit Notification Form Handler
   const editForm = document.getElementById("editNotificationForm");
   editForm.addEventListener("submit", async (event) => {
     // Stop default form submission - we'll handle it with JavaScript
     event.preventDefault();
-
-    // Gather form values into a plain object
-    const formData = new FormData(editForm);
-    const notificationData = Object.fromEntries(formData.entries());
-
-    // Remove notification_id from data (it's in the URL, not the body)
-    delete notificationData.notification_id;
+    const notificationData = Object.fromEntries(new FormData(editForm).entries());
 
     try {
       // PATCH for partial update (just title and content, not user_id)
-      const response = await fetch(`/api/notifications/${notificationId}`, {
+      const response = await authFetch(`/api/notifications/${notificationId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(notificationData),
       });
 
       if (response.ok) {
-        document.getElementById("successMessage").textContent =
-          "Notification updated successfully!";
-
+        document.getElementById("successMessage").textContent = "Notification updated successfully!";
         hideModal("editModal");
         showModal("successModal");
-
-        document
-          .getElementById("successModal")
-          .addEventListener(
+        document.getElementById("successModal").addEventListener(
             "hidden.bs.modal",
-            () => {
-              window.location.reload();
-            },
+            () => window.location.reload(),
             { once: true },
           );
       } else {
-        const error = await response.json();
-        document.getElementById("errorMessage").textContent =
-          getErrorMessage(error);
-
         hideModal("editModal");
-        showModal("errorModal");
+        showError(getErrorMessage(await response.json()));
       }
     } catch (error) {
-      document.getElementById("errorMessage").textContent =
-        "Network error. Please check your connection and try again.";
-      showModal("errorModal");
+      showError("Network error. Please check your connection and try again.");
     }
   });
 
-  // Delete Notification Handler - listen for click on delete button
-  const deleteButton = document.getElementById("confirmDelete");
-  deleteButton.addEventListener("click", async () => {
+  // Delete Notification Handler 
+  document.getElementById("confirmDelete").addEventListener("click", async () => {
     try {
       // DELETE request - no body needed, notification_id is in the URL
-      const response = await fetch(`/api/notifications/${notificationId}`, {
-        method: "DELETE",
-      });
+      const response = await authFetch(`/api/notifications/${notificationId}`, { method: "DELETE" });
 
       // 204 = No Content (success)
       if (response.status === 204) {
         // Notification is gone, redirect to home page
         window.location.href = "/";
       } else {
-        const error = await response.json();
-        document.getElementById("errorMessage").textContent =
-          getErrorMessage(error);
-
         hideModal("deleteModal");
-        showModal("errorModal");
+        showError(getErrorMessage(await response.json()));
       }
     } catch (error) {
-      document.getElementById("errorMessage").textContent =
-        "Network error. Please check your connection and try again.";
-      showModal("errorModal");
+      showError("Network error. Please check your connetion and try again.");
     }
   });
+
+  // Not logged in: nothing to show here, go to the login page
+  if (user) loadNotification();
+  else window.location.href = "/login";
 </script>
 {% endblock scripts %}

@@ -15,9 +15,9 @@ class DeleteNotification:
     outbox: OutboxRepository
 
     
-    async def execute(self, notification_id: int) -> None:
+    async def execute(self, notification_id: int, user_id: int) -> None:
         notification = await self.repository.get(notification_id)  
-        if notification is None:
+        if notification is None or notification.user_id != user_id:
             raise NotFoundError(f"Notification {notification_id} not found.")
         notification.delete()
         # A plain update, so it gets the same version check as PATCH: if the 

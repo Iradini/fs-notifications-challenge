@@ -1,0 +1,413 @@
+{% extends "layout.html" %}
+{% block content %}
+<div data-auth="in" class="content-section py-3 px-4 mb-4">
+    <h2 class="mb-4">Account Settings</h2>
+    
+    <!-- Who you are -->
+    <div class="d-flex align-items-center mb-4">
+        <img id="profileImage" class="rounded-circle me-3" src="/static/profile_pics/default.jpg" alt="Profile picture"
+            width="100" height="100">
+        <div>
+            <p id="displayEmail" class="text-body-secondary mb-0"></p>
+        </div>
+    </div>
+    {# Saved contact info. Only exists for a user who has a profile: it starts hidden (d-none)
+       and the script reveals it.  #}
+    <article id="contactView" class="content-section py-3 px-4 mb-4 d-none" aria-labelledby="contactViewTitle">
+        <h3 class="article-title fs-6 mb-2" id="contactViewTitle">Contact Info</h3>
+        <dl class="article-content mb-0">
+            <div id="viewEmailRow" class="row d-none">
+                <dt class="col-sm-3">Email</dt>
+                <dd class="col-sm-9 mb-1 text-break" id="viewEmail"></dd>
+            </div>
+            <div id="viewPhoneRow" class="row d-none">
+                <dt class="col-sm-3">Phone</dt>
+                <dd class="col-sm-9 mb-1 text-break" id="viewPhone"></dd>
+            </div>
+            <div id="viewTokenRow" class="row d-none">
+                <dt class="col-sm-3">Device token</dt>
+                <dd class="col-sm-9 mb-1 text-break font-monospace small" id="viewToken"></dd>
+            </div>
+        </dl>
+        <div class="account-actions mt-3 pt-3 border-top">
+            <button type="button" class="btn btn-outline-danger" id="deleteContactBtn" data-bs-toggle="modal"
+              data-bs-target="#deleteContactModal">Delete Contact Info</button>
+        </div>
+    </article>
+     <!-- Update Profile Form -->
+    <section class="mb-4" aria-labelledby="updateProfileTitle">
+        <h5 id="updateProfileTitle">Update Profile</h5>
+        <form id="updateProfileForm">
+            <div class="mb-3">
+                <label for="accountEmail" class="form-label">Login Email</label>
+                <input type="email" class="form-control" id="accountEmail" name="accountEmail" autocomplete="username"
+                  maxlength="255" required>
+                <div class="form-text">The address you sign in with.</div>
+            </div> 
+            <fieldset class="mb-3">
+                <legend class="fs-6 mb-1">Contact info</legend>
+                <p class="form-text mt-0" id="contactHint"></p>
+                <div class="mb-3">
+                    <label for="contactEmail" class="form-label">Contact Email</label>
+                    <input type="email" class="form-control" id="contactEmail" name="email" autocomplete="off" 
+                      maxlength="255" pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
+                      title="Use a full address, e.g. ana@example.com" >
+                </div>
+                <div class="mb-3">
+                    <label for="contactPhone" class="form-label">Phone Number</label><br>
+                    <input type="tel" class="form-control" id="contactPhone" name="phone" autocomplete="tel" 
+                    placeholder="+598 99 123 456"><br>
+                </div>
+                <div class="mb-3">
+                    <label for="contactToken" class="form-label">Device Token</label><br>
+                    <input type="text" class="form-control" id="contactToken" name="token" autocomplete="off"
+                     minlength="32" maxlength="4096" pattern="^[A-Za-z0-9_\-:.]+$" 
+                     title="At least 32 characters: letters, digits, _ . : .">
+                </div>
+            </fieldset>
+            <button type="submit" class="btn btn-primary" id="saveProfileBtn">Update Profile</button>           
+            <span id="profileStatus" class="text-body-secondary ms-3" role="status"></span>
+        </form>
+    </section>
+    <hr>
+    <!-- Profile Picture Section (Placeholder) -->
+    <div class="mb-4">
+        <h5>Profile Picture</h5>
+        <p class="text-body-secondary">File upload coming in a future improvement.</p>
+        <input type="file" class="form-control" disabled>
+    </div>
+    <hr>
+    <!-- Password Reset Section (Placeholder) -->
+    <section class="mb-4" aria-labelledby="passwordTitle">
+        <h5 id="passwordTitle">Change Password</h5>
+        <form id="changePasswordForm">
+            {# Password managers want to know which account the password belongs to #}
+            <input type="text" id="passwordFormUsername" autocomplete="username" class="visually-hidden" tabindex="-1"
+                aria-hidden="true" readonly>
+            <div class="mb-3">
+                <label for="currentPassword" class="form-label">Current Password</label>
+                <input type="password" class="form-control" id="currentPassword" autocomplete="current-password" required>
+            </div>
+            <div class="mb-3">
+                <label for="newPassword" class="form-label">New Password</label>
+                <input type="password" class="form-control" id="newPassword" autocomplete="new-password"
+                    minlength="8" required>
+                <div class="form-text">At least 8 characters, and different from the current one.</div>
+            </div>
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                <input type="password" class="form-control" id="confirmPassword" autocomplete="new-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="changePasswordBtn">Change Password</button>
+        </form>
+    </section>
+    <hr>
+    <!-- Logout Button -->
+    <div class="mb-4">
+        <button type="button" class="btn btn-light" id="accountLogoutBtn">Logout</button>
+    </div>
+    <hr>
+    <!-- Danger Zone -->
+    <section class="mb-2" aria-labelledby="dangerTitle">
+        <h5 class="text-danger" id="dangerTitle">Danger Zone</h5>
+        <p class="text-body-secondary">
+            Once you delete your account, there is no going back. All your notifications will also be deleted.
+        </p>
+        <button type="button" class="btn btn-outline-danger" id="deleteAccountBtn" data-bs-toggle="modal"
+            data-bs-target="#deleteAccountModal">Delete Account</button>
+    </section>
+</div>
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteContactModal" tabindex="-1" aria-labelledby="deleteContactModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteContactModalLabel">Delete Contact Info?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fs-5">Are you sure you want to delete your contact info? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteContact">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Delete Account Confirmation Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="deleteAccountForm">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteAccountModalLabel">Delete Account?</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-5">
+                        Are you sure you want to delete your account? This action cannot be undone. All your notifications will be
+                        permanently deleted.
+                    </p>
+                    <div class="mb-3"> 
+                        <label for="deletePassword" class="form-label">Enter your password to confirm</label>
+                        <input type="password" class="form-control" id="deletePassword"
+                            autocomplete="current-password" required>
+                    </div>
+                    <div id="deleteAccountError" class="alert alert-danger d-none mb-0" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="confirmDeleteAccount" disabled>Delete Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+{% block scripts %}
+<script type="module">
+    import { authFetch, clearUserCache, getCurrentUser, logout } from '/static/js/auth.js';
+    import { getErrorMessage, hideModal, showModal } from '/static/js/utils.js';
+
+    const $ = (id) => document.getElementById(id);
+    const JSON_HEADERS = { 'Content-Type': 'application/json' };
+    const NETWORK_ERROR = 'Network error. Please check your connection and try again.';
+    const CONTACT_FIELDS = [['email', 'contactEmail'], ['phone', 'contactPhone'], ['token', 'contactToken']];
+
+    // What the server has saved right now (the last UserResponse). The form are
+    // compared against it, so only real changes are sent.
+    let account = null;
+
+    function showError(message) {
+        $("errorMessage").textContent = message;
+        showModal("errorModal");
+    }
+
+    function showSuccess(message) {
+        $("successMessage").textContent = message;
+        showModal("successModal");
+    }
+
+    async function errorFrom(response) {
+        try {
+            return getErrorMessage(await response.json());
+        } catch {
+            return `Unexpected error (${response.status}). Please try again.`;
+        }
+    }
+
+    // Bootstrap modals fade out. Opening another while the first is still 
+    // fading leaves a struck backdrop, so wait for 'hidden' before the next step
+    function hideModalAndWait(id) {
+        const element = $(id);
+        if (!element.classList.contains("show")) return Promise.resolve();
+        return new Promise((resolve) => {
+            element.addEventListener("hidden.bs.modal", resolve, { once: true });
+            hideModal(id);
+        });
+    }
+
+    // Paint everything that depends on the saved account. This is only place
+    // that decides whether the contact view (and its delete button) shows up
+    function render(saved) {
+        account = saved;
+        const profile = saved.profile;         // null when the user has no contact info
+
+        $('displayEmail').textContent = saved.email;
+        $('usernameDisplay').textContent = saved.email;     // the navbar (layout.html)
+        $('accountEmail').value = saved.email;
+        $('passwordFormUsername').value = saved.email;
+
+        $('contactView').classList.toggle('d-none', !profile);
+        for (const [key, inputId] of CONTACT_FIELDS) {
+            const value = profile?.[key] ?? '';
+            const viewId = 'view' + key[0].toUpperCase() + key.slice(1);
+            $(viewId).textContent = value;
+            $(viewId + 'Row').classList.toggle('d-none', !value);
+            $(inputId).value = value;
+        }
+
+        $('contactHint').textContent = profile
+        ? 'These replace your contact info. Leave a field empty to drop it.'
+        : 'You have no contact info yet. Fill in at least one field to add it.';
+    }
+
+    // Load current user data and populate form
+    async function load() {
+        const response = await authFetch(`/api/users/${account.id}`);
+        if (!response.ok) {
+            showError(await errorFrom(response));
+            return;
+        }
+        render(await response.json());
+    }
+
+    // "+598 99 123 456" and "+59899123456" are the same number (the API stores the latter)
+    const digitsOnly = (value) => value.replace(/[\s\-().]/g, '');
+    function sameContact(a, b) {
+        return (a.email || '') === (b.email || '')
+            && digitsOnly(a.phone || '') === digitsOnly(b.phone || '')
+            && (a.token || '') === (b.token || '');
+    }
+
+    // Update Profile: login email and/or contact info in one atomic request
+    const updateForm = $('updateProfileForm');
+    updateForm.addEventListener('input', () => { $('profileStatus').textContent = ''; });
+    updateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const patch = {};
+        const email = $('accountEmail').value.trim();
+        if (email !== account.email) patch.email = email;
+
+        const contact = {};
+        for (const[key, inputId] of CONTACT_FIELDS) {
+            const value = $(inputId).value.trim();
+            if (value) contact[key] = value;
+        }
+        if (Object.keys(contact).length === 0) {
+            if (account.profile) {
+                showError('Contact info needs at least one of email, phone or token. To remove it, use "Delete Contact Info".');
+                return;
+            }            
+        } else if (!sameContact(contact, account.profile ?? {})) {
+            patch.profile = contact;        // replaces the whole contact block
+        }
+
+        if (Object.keys(patch).length === 0) {
+            $('profileStatus').textContent = 'Nothing to save: no changes.';
+            return;
+        }
+
+        $('saveProfileBtn').disabled = true;
+        try {
+            const response = await authFetch(`/api/users/${account.id}`, {
+                method: 'PATCH',
+                headers: JSON_HEADERS,
+                body: JSON.stringify(patch),
+            });
+            if (response.ok) {
+                clearUserCache();     // Clear cache so next getCurrentUser() fetches the new email
+                render(await response.json());
+                showSuccess('Profile updated successfully!');
+            } else {
+                showError(await errorFrom(response));
+            }
+        } catch (error) {
+            showError(NETWORK_ERROR);
+        } finally{
+            $('saveProfileBtn').disabled = false;
+        }
+    });
+
+    // Delete Contact Info Handler
+    $("confirmDeleteContact").addEventListener('click', async () => {
+        const button = $('confirmDeleteContact');
+        button.disabled = true;
+        try {
+            const response = await authFetch(`/api/users/${account.id}/profile`, { method: "DELETE" });
+            await hideModalAndWait('deleteContactModal');
+            if (response.status == 204) {
+                await load();
+                showSuccess('Contact info deleted');
+            } else if (response.status == 404) {
+                await load();       // already gone (another tab?): just show what is saved
+            } else {
+                showError(await errorFrom(response));
+            }
+        } catch {
+            await hideModalAndWait('deleteContactModal');
+            showError(NETWORK_ERROR);
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    // Change Password Handler
+    const passwordForm = $('changePasswordForm');
+    function checkPaswordsMatch() {
+        $('confirmPassword').setCustomValidity(
+            $('newPassword').value === $('confirmPassword').value ? '' : 'Passwords do not match.',
+        );
+    }
+    $('newPassword').addEventListener('input', checkPaswordsMatch);
+    $('confirmPassword').addEventListener('input', checkPaswordsMatch);
+
+    passwordForm.addEventListener('submit', async (event) => {
+        event.preventDefault();        // only runs when the browser's own validation passed
+        $('changePasswordBtn').disabled = true;
+        try {
+            const response = await authFetch(`/api/users/${account.id}/password`, {
+                method: "PUT",
+                headers: JSON_HEADERS,
+                body: JSON.stringify({
+                    current_password: $('currentPassword').value,
+                    new_password: $('newPassword').value,
+                }),
+            });
+            if (response.status == 204) {
+                passwordForm.reset();
+                showSuccess('Your password was changed.');
+            } else {
+                showError(await errorFrom(response));
+            }
+        } catch {
+            showError(NETWORK_ERROR);
+        } finally {
+            $('changePasswordBtn').disabled = false;
+        }
+    });
+
+    // Delete Account Handler
+    const deleteForm = $('deleteAccountForm');
+    const deletePassword = $('deletePassword');
+    const confirmDeleteAccount = $('confirmDeleteAccount');
+    const deleteError = $('deleteAccountError');
+
+    deletePassword.addEventListener('input', () => { confirmDeleteAccount.disabled = !deletePassword.value;});
+    $('deleteAccountModal').addEventListener('shown.bs.modal', () => deletePassword.focus());
+    $('deleteAccountModal').addEventListener('hidden.bs.modal', () => {
+        deleteForm.reset();
+        confirmDeleteAccount.disabled = true;
+        deleteError.classList.add('d-none');
+    });
+    
+    deleteForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        deleteError.classList.add('d-none');
+        confirmDeleteAccount.disabled = true;
+        try {
+          const response = await authFetch(`/api/users/${account.id}`, {
+            method: 'DELETE',
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ password: deletePassword.value }),
+          });
+          if (response.status === 204) {
+            logout();         // Account deleted successfully: drop the token and go home
+            return;
+          } 
+          deleteError.textContent = await errorFrom(response);
+        } catch {
+          deleteError.textContent = NETWORK_ERROR;
+        }
+        deleteError.classList.remove('d-none');
+        confirmDeleteAccount.disabled = !deletePassword.value;
+      });
+
+    // Logout Handler
+    $('accountLogoutBtn').addEventListener('click', logout);
+
+    // Load user data on page load
+    const user = await getCurrentUser();
+    if (!user) {
+        window.location.href = "/login";
+    } else {
+        account = user;             // just the id, until load() fetches the saved account
+        await  load();
+    }
+</script>
+{% endblock scripts %}
