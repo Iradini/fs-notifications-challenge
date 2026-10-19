@@ -155,6 +155,21 @@ class UserUpdateRequest(_Strict):
         return self
 
 
+class ForgotPasswordRequest(_Strict):
+    email: EmailStr = Field(max_length=120)
+
+
+class PasswordResetRequest(_Strict):
+    """POST /auth/reset-password. The token is the secret for the emailed link."""
+
+    token: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class PasswordChangeRequest(_Strict):
     """PUT /users/{id}/password. The current password is asked again on purpose."""
 

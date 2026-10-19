@@ -1,7 +1,8 @@
+from datetime import timedelta
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fs_notifications_challenge.application.change_password import ChangePassword
@@ -14,18 +15,32 @@ from fs_notifications_challenge.application.get_notification import GetNotificat
 from fs_notifications_challenge.application.get_user import GetUser
 from fs_notifications_challenge.application.list_notification import ListNotifications
 from fs_notifications_challenge.application.log_in import LogIn
-from fs_notifications_challenge.application.ports import PasswordHasher, TokenService
+from fs_notifications_challenge.application.ports import (
+    PasswordHasher,
+    PasswordResetMailer,
+    ResetTokenService, 
+    TokenService,
+)
+from fs_notifications_challenge.application.request_password_reset import RequestPasswordReset
+from fs_notifications_challenge.application.reset_password import ResetPassword 
 from fs_notifications_challenge.application.update_notification import UpdateNotification
 from fs_notifications_challenge.application.update_user import UpdateUser
 from fs_notifications_challenge.config import settings
 from fs_notifications_challenge.infrastructure.database import get_db
+from fs_notifications_challenge.infrastructure.mailer import ConsolePasswordResetMailer, SmtpPasswordResetMailer
 from fs_notifications_challenge.infrastructure.outbox import (
     OutboxEventPublisher,
     SQLAlchemyOutboxRepository,
 )
+from fs_notifications_challenge.infrastructure.password_reset_repository import SQLAlchemyPasswordResetTokenRepository
 from fs_notifications_challenge.infrastructure.repository import SQLAlchemyNotificationRepository
-from fs_notifications_challenge.infrastructure.security import Argon2PasswordHasher, JwtTokenService
+from fs_notifications_challenge.infrastructure.security import (
+    Argon2PasswordHasher,
+    JwtTokenService,
+    Sha256ResetTokenService,
+)
 from fs_notifications_challenge.infrastructure.user_repository import SQLAlchemyUserRepository
+from fs_notifications_challenge.interface.background_mailer import BackgroundMailer
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 
@@ -108,3 +123,58 @@ def get_token_service() -> TokenService:
 
 def get_login_in(db: Db) -> LogIn:
     return LogIn(users=SQLAlchemyUserRepository(db), hasher=get_password_hasher(), tokens=get_token_service())
+
+
+# --- Password reset ---------------------------------------------------------
+
+@lru_cache
+def get_reset_token_service() -> ResetTokenService:
+    return Sha256ResetTokenService()
+
+
+@lru_cache
+def get_password_reset_mailer() -> PasswordResetMailer:
+    common = {
+        "frontend_url": settings.frontend_url,
+        "mail_from": settings.mail_from,
+        "expires_minutes": settings.reset_token_expire_minutes,
+    }
+    if settings.mail_backend == "smtp":
+        return SmtpPasswordResetMailer(
+            hostname=settings.mail_server,
+            port=settings.mail_port,
+            username=settings.mail_username,
+            password=settings.mail_password.get_secret_value(),
+            start_tls=settings.mail_use_tls,
+            **common,
+        )
+    return ConsolePasswordResetMailer(**common)
+
+
+def get_request_password_reset(
+    db: Db,
+    background_tasks: BackgroundTasks,
+    mailer: Annotated[PasswordResetMailer, Depends(get_password_reset_mailer)],
+    secrets: Annotated[ResetTokenService, Depends(get_reset_token_service)],
+) -> RequestPasswordReset:
+    # The mailer arrives through Depends (not a direct call) so a test can swap it
+    # with app.dependency_overrides.
+    return RequestPasswordReset(
+        users=SQLAlchemyUserRepository(db),
+        tokens=SQLAlchemyPasswordResetTokenRepository(db),
+        secrets=secrets,
+        mailer=BackgroundMailer(mailer, background_tasks),
+        ttl=timedelta(minutes=settings.reset_token_expire_minutes),
+    )
+
+
+def get_reset_password(
+    db: Db,
+    secrets: Annotated[ResetTokenService, Depends(get_reset_token_service)],
+) -> ResetPassword:
+    return ResetPassword(
+        users=SQLAlchemyUserRepository(db),
+        tokens=SQLAlchemyPasswordResetTokenRepository(db),
+        secrets=secrets,
+        hasher=get_password_hasher(),
+    )

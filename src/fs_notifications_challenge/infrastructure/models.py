@@ -15,12 +15,16 @@ def _now() -> datetime:
 
 
 class UserModel(Base):
-    __tablename__= "users"
+    __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    reset_tokens: Mapped[list[PasswordResetTokenModel]] = relationship(
+        back_populates="user", cascade="all, delete-orphan",
+    )
 
     # selectin: async sessions can't lazy-load, so load the profile with the user.
     profile: Mapped[UserProfileModel | None] = relationship(
@@ -34,7 +38,7 @@ class UserModel(Base):
 
 
 class UserProfileModel(Base):
-    __tablename__="user_profiles"
+    __tablename__ = "user_profiles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
@@ -45,8 +49,20 @@ class UserProfileModel(Base):
     user: Mapped[UserModel] = relationship(back_populates="profile")
 
 
+class PasswordResetTokenModel(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    user: Mapped[UserModel] = relationship(back_populates="reset_tokens")
+
+
 class NotificationModel(Base):
-    __tablename__= "notifications"
+    __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)

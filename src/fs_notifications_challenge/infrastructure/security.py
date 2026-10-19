@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
+import hashlib 
 import jwt
+import secrets
 from pwdlib import PasswordHash
 
-from fs_notifications_challenge.application.ports import PasswordHasher, TokenService
+from fs_notifications_challenge.application.ports import PasswordHasher, ResetTokenService, TokenService
 from fs_notifications_challenge.domain.errors import AuthenticationError
 
 
@@ -46,3 +48,15 @@ class JwtTokenService(TokenService):
             return int(payload["sub"])
         except (jwt.InvalidTokenError) as exc:
             raise AuthenticationError("Invalid or expired token.") from exc            
+
+
+class Sha256ResetTokenService(ResetTokenService):
+    """The secret is 32 random bytes, so even a fast hash cannot be brute-force."""
+
+
+    def generate(self) -> str:
+        return secrets.token_urlsafe(32)
+
+
+    def digest(self, token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()

@@ -42,3 +42,17 @@ async def login_page(request: Request):
 @router.get("/register", response_class=HTMLResponse, include_in_schema=False, name="register_page")
 async def register_page(request: Request):
     return templates.TemplateResponse(request, "register.html", {"title": "Register"})
+
+
+@router.get("/forgot-password", response_class=HTMLResponse, include_in_schema=False, name="forgot_password_page")
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse(request, "forgot_password.html", {"title": "Forgot Password"})
+
+
+@router.get("/reset-password", response_class=HTMLResponse, include_in_schema=False, name="reset_password_page")
+async def reset_password_page(request: Request):
+    response = templates.TemplateResponse(request, "reset_password.html", {"title": "Reset Password"})
+    # The reset secret is in this page's URL. Without this header the browser would send
+    # that URL as the Referer to every third party the page loads (CDN, fonts).
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response

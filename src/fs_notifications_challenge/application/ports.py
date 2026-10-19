@@ -4,6 +4,7 @@ from fs_notifications_challenge.application.events import NotificationCreatedEve
 from fs_notifications_challenge.domain.channel import Channel
 from fs_notifications_challenge.domain.delivery import DeliveryAttempt, DeliveryResult
 from fs_notifications_challenge.domain.notification import Notification
+from fs_notifications_challenge.domain.password_reset import PasswordResetToken
 from fs_notifications_challenge.domain.user import User
 
 
@@ -131,4 +132,49 @@ class TokenService(ABC):
     @abstractmethod
     def verify_access_token(self, token: str) -> int:
         """Return the user id. Raise AuthenticationError if invalid or expired."""
+        ...
+
+
+class ResetTokenService(ABC):
+    """The secrets inside password-reset links. How they are made and hashed is a
+    security detail the use cases should not know (and tests can replace)."""
+
+
+    @abstractmethod
+    def generate(self) -> str:
+        """A fresh, unguessable secret. This is what goes in the email."""
+        ...
+
+
+    @abstractmethod
+    def digest(self, token: str) -> str:
+        """What is stored and looked up. The same token always gives the same digest."""
+        ...
+
+
+class PasswordResetTokenRepository(ABC):
+    @abstractmethod
+    async def add(self, token: PasswordResetToken) -> PasswordResetToken:
+        """Persist a token (assigns its id). Does NOT commit: get_db does, once per
+        request."""
+        ...
+
+    @abstractmethod
+    async def get_by_hash(self, token_hash: str) -> PasswordResetToken | None:
+        ...
+
+
+    @abstractmethod
+    async def delete_for_user(self, user_id: int) -> None:
+        """Remove every reset token of this user (user, replaced or no longer wanted)."""
+        ...
+
+
+class PasswordResetMailer(ABC):
+    """Tells a person how to reset their password. Whether that is SMTP, an API or 
+    a log lines is the adapter's business; the use case only says WHO and WITH WHAT."""
+
+
+    @abstractmethod
+    async def send_reset_link(self, to_email: str, token: str) -> None:
         ...
