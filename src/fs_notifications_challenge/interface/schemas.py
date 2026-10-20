@@ -17,6 +17,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 from pydantic_extra_types.phone_numbers import PhoneNumberValidator 
 
+from fs_notifications_challenge.application.check_health import HealthReport
 from fs_notifications_challenge.application.list_notification import NotificationPage
 from fs_notifications_challenge.domain.channel import Channel
 from fs_notifications_challenge.domain.contact import ContactInfo
@@ -289,3 +290,17 @@ class PaginatedNotificationsResponse(BaseModel):
             limit=page.limit,
             has_more=page.has_more,
         )
+
+
+class HealthResponse(BaseModel):
+    status: Literal["healthy", "unhealthy"]
+    checks: dict[str, Literal["up", "down"]]
+
+    @classmethod
+    def from_report(cls, report: HealthReport) -> HealthResponse:
+        return cls(status="healthy" if report.healthy else "unhealthy",
+                   checks={
+                       "database": "up" if report.database else "down",
+                       "outbox": "up" if report.outbox else "down",
+                    },
+                )

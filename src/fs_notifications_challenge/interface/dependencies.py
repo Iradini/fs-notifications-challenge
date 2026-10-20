@@ -13,6 +13,7 @@ from fs_notifications_challenge.application.delete_user import DeleteUser
 from fs_notifications_challenge.application.delete_user_profile import DeleteUserProfile
 from fs_notifications_challenge.application.get_notification import GetNotification
 from fs_notifications_challenge.application.get_user import GetUser
+from fs_notifications_challenge.application.check_health import CheckHealth
 from fs_notifications_challenge.application.list_notification import ListNotifications
 from fs_notifications_challenge.application.log_in import LogIn
 from fs_notifications_challenge.application.ports import (
@@ -26,7 +27,11 @@ from fs_notifications_challenge.application.reset_password import ResetPassword
 from fs_notifications_challenge.application.update_notification import UpdateNotification
 from fs_notifications_challenge.application.update_user import UpdateUser
 from fs_notifications_challenge.config import settings
-from fs_notifications_challenge.infrastructure.database import get_db
+from fs_notifications_challenge.infrastructure.database import engine, get_db
+from fs_notifications_challenge.infrastructure.health import (
+    SQLAlchemyDatabaseHealthCheck,
+    SQLAlchemyOutboxHealthCheck,    
+)
 from fs_notifications_challenge.infrastructure.mailer import ConsolePasswordResetMailer, SmtpPasswordResetMailer
 from fs_notifications_challenge.infrastructure.outbox import (
     OutboxEventPublisher,
@@ -178,3 +183,9 @@ def get_reset_password(
         secrets=secrets,
         hasher=get_password_hasher(),
     )
+
+def get_check_health() -> CheckHealth:
+    return CheckHealth(
+        database=SQLAlchemyDatabaseHealthCheck(engine),
+        outbox=SQLAlchemyOutboxHealthCheck(engine),    
+    ) 

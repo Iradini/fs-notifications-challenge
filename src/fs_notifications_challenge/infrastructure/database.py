@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase
 from fs_notifications_challenge.config import settings
 
 
-engine = create_async_engine(settings.database_url)
+engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 
 AsyncSessionLocal = async_sessionmaker(
     engine, 

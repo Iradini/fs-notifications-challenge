@@ -12,6 +12,7 @@ from fs_notifications_challenge.infrastructure.database import engine
 from fs_notifications_challenge.infrastructure.worker import run_outbox_worker
 from fs_notifications_challenge.interface.auth_routes import router as auth_router
 from fs_notifications_challenge.interface.error_handlers import register_exception_handlers
+from fs_notifications_challenge.interface.health_routes import router as health_router
 from fs_notifications_challenge.interface.pages import router as pages_router
 from fs_notifications_challenge.interface.routes import router as api_router
 from fs_notifications_challenge.interface.user_routers import router as users_router
@@ -43,6 +44,8 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 register_exception_handlers(app)
 
 app.include_router(pages_router)
+
+app.include_router(health_router, tags=["health"])
 app.include_router(
     api_router,
     prefix="/api/notifications",

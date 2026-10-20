@@ -178,3 +178,23 @@ class PasswordResetMailer(ABC):
     @abstractmethod
     async def send_reset_link(self, to_email: str, token: str) -> None:
         ...
+
+
+class DatabaseHealthCheck(ABC):
+
+
+    @abstractmethod
+    async def is_available(self) -> bool:
+        ...
+
+
+class OutboxHealthCheck(ABC):
+    """Asks whether notifications waiting for delivery are being picked up. What counts
+    as "waiting too long" and how it is measured is the adapter's business."""
+
+
+    @abstractmethod
+    async def is_draining(self) -> bool:
+        """True unless something has been waiting for the worker for too long. Must
+        not raise: if the outbox can't be inspected, the answer is False."""
+        ...
