@@ -16,7 +16,7 @@ from fs_notifications_challenge.infrastructure.models import (
     UserModel,
     UserProfileModel,
 )
-from tests.test_api import PASSWORD, body, client, login, make_user, run_worker_once   # noqa: F401
+from tests.conftest import PASSWORD, body, client, login, make_user, run_worker_once    # noqa: F401 
 
 NEW_PASSWORD = "Another1234+"
 
@@ -133,7 +133,6 @@ async def test_the_session_survives_a_password_change(client):
 
 # --- delete account -------------------------------------------------------------------------------
 
-
 async def test_delete_account_with_the_right_password(client):
     uid = await make_user(client)
 
@@ -177,6 +176,7 @@ async def test_you_cannot_delete_someone_else_account(client):
     await make_user(client, "ana@example.com")
 
     response = await _delete_account(client, jane, PASSWORD)
+    
     assert response.status_code == 404
     assert await _count(UserModel) == 2
 

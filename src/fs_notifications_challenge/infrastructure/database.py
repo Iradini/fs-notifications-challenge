@@ -8,22 +8,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from fs_notifications_challenge.config import settings
 
-_is_sqlite = settings.database_url.startswith("sqlite")
 
-engine = create_async_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
-)
-
-if _is_sqlite:
-    # SQLite ignores foreign keys unless asked, per connection. Postgres always
-    # enforces them, so turning this on keeps dev and prod behaving the same.
-    @event.listens_for(engine.sync_engine, "connect")
-    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-        
+engine = create_async_engine(settings.database_url)
 
 AsyncSessionLocal = async_sessionmaker(
     engine, 

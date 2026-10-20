@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from fs_notifications_challenge.infrastructure.database import AsyncSessionLocal
 from fs_notifications_challenge.infrastructure.models import UserModel, UserProfileModel
-from tests.test_api import client, login, make_user  # noqa: F401  (client is a fixture)
+from tests.conftest import client, login, make_user  # noqa: F401  (client is a fixture)
 
 
 async def _profile_rows() -> list[UserProfileModel]:

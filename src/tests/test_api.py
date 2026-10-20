@@ -2,61 +2,24 @@
 The background worker isn't started (no lifespan); test drive it explicitly."""
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+
+from fs_notifications_challenge.application.deliver_notification import DeliverNotification
 from fs_notifications_challenge.domain.errors import ConcurrentUpdateError
 from fs_notifications_challenge.infrastructure.channels import build_channel_registry
-from fs_notifications_challenge.infrastructure.database import AsyncSessionLocal, Base, engine
-from fs_notifications_challenge.application.deliver_notification import DeliverNotification
+from fs_notifications_challenge.infrastructure.database import AsyncSessionLocal
 from fs_notifications_challenge.infrastructure.delivery_repository import SQLAlchemyDeliveryAttemptRepository
 from fs_notifications_challenge.infrastructure.models import DeliveryAttemptModel, NotificationModel, OutboxMessageModel
 from fs_notifications_challenge.infrastructure.outbox import SQLAlchemyOutboxRepository
 from fs_notifications_challenge.infrastructure.repository import SQLAlchemyNotificationRepository
 from fs_notifications_challenge.infrastructure.worker import _process_message, _process_one_cycle
 from fs_notifications_challenge.main import app
+from tests.conftest import PASSWORD, body, login, make_user, run_worker_once
 
 TOKEN = "fcm_" + "a1B2c3D4" * 8
 
-
-@pytest.fixture
-async def client():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
-    await engine.dispose()  # each test gets its own event loop ; don't reuse pooled connections
-
-
-PASSWORD = "Test1234+"
-
-async def login(client, email="owner@example.com") -> None:
-    """From now on `client` acts as this user (it sends their Bearer token)."""
-    response = await client.post("/api/auth/token", data={"username": email, "password": PASSWORD})
-    assert response.status_code == 200, response.text
-    client.headers["Authorization"] = f"Bearer {response.json()['access_token']}"
-
-
-async def make_user(client, email="owner@example.com") -> int:
-    """Register a user and log in as them."""
-    response = await client.post("/api/users", json={"email": email, "password": PASSWORD})
-    assert response.status_code == 201, response.text
-    await login(client, email)
-    return response.json()["id"]
-
-
-def body(**overrides):
-    # No user_id: the owner is whoever the token belongs to
-    return {
-        "title": "Test", "content": "Test Content",
-        "channel": "EMAIL", "recipient": {"email": "test@example.com"}, **overrides,
-    }
-
-
-async def run_worker_once():
-    await _process_one_cycle(build_channel_registry(), poll_limit=10)
 
 
 # --- users & profiles ------------------------------------------------------------------

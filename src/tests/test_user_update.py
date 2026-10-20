@@ -13,7 +13,7 @@ from fs_notifications_challenge.domain.user import User, UserProfile
 from fs_notifications_challenge.infrastructure.database import AsyncSessionLocal
 from fs_notifications_challenge.infrastructure.models import UserModel, UserProfileModel
 from fs_notifications_challenge.infrastructure.user_repository import SQLAlchemyUserRepository
-from tests.test_api import PASSWORD, client, login, make_user  # noqa: F401  (client is a fixture)
+from tests.conftest import PASSWORD, client, login, make_user  # noqa: F401  (client is a fixture)
 
 PHONE = "+598 99 123 456"          # stored as +59899123456
 

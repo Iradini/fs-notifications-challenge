@@ -35,7 +35,7 @@ from fs_notifications_challenge.infrastructure.security import Sha256ResetTokenS
 from fs_notifications_challenge.interface.background_mailer import BackgroundMailer
 from fs_notifications_challenge.interface.dependencies import get_password_reset_mailer
 from fs_notifications_challenge.main import app
-from tests.test_api import PASSWORD, client, make_user   # noqa: F401    (client is a fixture)
+from tests.conftest import PASSWORD, client, make_user   # noqa: F401    (client is a fixture)
 
 NEW_PASSWORD = "Brand-new-1234"
 SENT_ANSWER = "If an account exists with this email, you will receive password reset instructions."
